@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
+    # ── Gemini AI ─────────────────────────────────────────────────────
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
     # ── CORS ─────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = ["*"]
 
