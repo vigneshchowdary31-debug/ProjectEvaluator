@@ -14,10 +14,44 @@ from google.genai import types
 
 from app.config import get_settings
 from app.schemas.prd import PRDAnalysisResult
+from app.schemas.github import GithubAnalysisResultSchema
 
 logger = logging.getLogger(__name__)
 
-# ── Prompt ───────────────────────────────────────────────────────────────────
+# ── Prompts ──────────────────────────────────────────────────────────────────
+
+GITHUB_SYSTEM_INSTRUCTION = """You are an expert software architect, security auditor, and codebase analyst.
+Your task is to analyze a GitHub repository's folder structure, config/manifest files, and dependency list to extract detailed project insights.
+
+You MUST return valid JSON that conforms exactly to the schema provided. Do not include any text outside the JSON object.
+Be thorough and objective in your security issues and architectural quality rating.
+"""
+
+GITHUB_ANALYSIS_PROMPT = """Analyze the following GitHub repository details:
+
+Repository Name: {repo_name}
+
+1. **Folder Structure (JSON Tree)**:
+{folder_tree_json}
+
+2. **Package Manifest / Configuration Files**:
+{manifest_contents_text}
+
+---
+
+Your task is to analyze these details and extract:
+1. **technologies**: Languages, build tools, databases (e.g. Python, TypeScript, SQLite, PostgreSQL).
+2. **frameworks**: Frameworks and major libraries (e.g. FastAPI, React, Angular, TailwindCSS, SQLAlchemy, JUnit).
+3. **pages**: Main pages/screens (for frontends) or key API endpoints/routers (for backends). Include name, route/method, file_path, and a short description.
+4. **components**: Reuseable UI components or backend modular services (repositories, services, context providers, controllers, hooks).
+5. **folder_structure**: Recreate or simplify the nested directory structure provided to you.
+6. **security_issues**: List potential vulnerabilities or configuration flaws evident from dependencies or folder structure (e.g. missing security headers, use of vulnerable dependencies, cleartext storage configs). For each, specify severity (high, medium, low), issue title, file_path, and description.
+7. **architecture_quality**: Assess codebase organization, strengths (e.g., modularity, separation of concerns), weaknesses, and recommendations. Provide a rating (excellent, good, fair, poor).
+
+Ensure all file paths cited correspond to actual files present in the folder structure.
+"""
+
+# ── PRD Prompts ──────────────────────────────────────────────────────────────
 
 SYSTEM_INSTRUCTION = """You are an expert product analyst and software architect.
 Your task is to analyze Product Requirements Documents (PRDs) and extract structured information.
@@ -193,6 +227,83 @@ class GeminiService:
             len(result.features),
             len(result.forms),
             len(result.user_flows),
+        )
+
+        return result
+
+    def analyze_github(self, repo_name: str, folder_tree: dict, manifest_contents: dict) -> GithubAnalysisResultSchema:
+        """
+        Send repository details to Gemini and return a validated GithubAnalysisResultSchema.
+        """
+        # Format inputs
+        folder_tree_json = json.dumps(folder_tree, indent=2)
+        
+        manifests_list = []
+        for path, content in manifest_contents.items():
+            manifests_list.append(f"--- File: {path} ---\n{content}\n")
+        manifest_contents_text = "\n".join(manifests_list) if manifests_list else "No manifest files found."
+
+        prompt = GITHUB_ANALYSIS_PROMPT.format(
+            repo_name=repo_name,
+            folder_tree_json=folder_tree_json,
+            manifest_contents_text=manifest_contents_text
+        )
+
+        logger.info("Sending GitHub repo info to Gemini — %d chars", len(prompt))
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=GITHUB_SYSTEM_INSTRUCTION,
+                    response_mime_type="application/json",
+                    response_schema=GithubAnalysisResultSchema,
+                    temperature=0.1,
+                ),
+            )
+
+            if not response.text:
+                raise GeminiError("Gemini returned an empty response.")
+
+            logger.debug("Raw Gemini response: %s", response.text[:500])
+
+        except Exception as e:
+            if isinstance(e, GeminiError):
+                raise
+            raise GeminiError(f"Gemini API call failed: {str(e)}")
+
+        # ── Parse and validate ──────────────────────────────────────────
+        try:
+            if hasattr(response, "parsed") and response.parsed is not None:
+                return response.parsed
+        except Exception as e:
+            logger.warning("Failed to access response.parsed directly for Github: %s. Falling back to manual JSON parsing.", str(e))
+
+        return self._parse_github_response(response.text)
+
+    def _parse_github_response(self, raw_response: str) -> GithubAnalysisResultSchema:
+        cleaned = self._clean_json_response(raw_response)
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse Gemini response as JSON: %s", str(e))
+            raise GeminiError(f"Gemini returned invalid JSON for GitHub analysis: {str(e)}")
+
+        # Validate with Pydantic
+        try:
+            result = GithubAnalysisResultSchema.model_validate(data)
+        except Exception as e:
+            logger.error("Pydantic validation failed for GitHub analysis: %s", str(e))
+            raise GeminiError(f"Gemini response did not match expected schema: {str(e)}")
+
+        logger.info(
+            "GitHub analysis complete — %d technologies, %d frameworks, %d pages, %d components",
+            len(result.technologies),
+            len(result.frameworks),
+            len(result.pages),
+            len(result.components),
         )
 
         return result
