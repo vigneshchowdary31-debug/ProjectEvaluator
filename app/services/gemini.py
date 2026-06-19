@@ -15,10 +15,48 @@ from google.genai import types
 from app.config import get_settings
 from app.schemas.prd import PRDAnalysisResult
 from app.schemas.github import GithubAnalysisResultSchema
+from app.schemas.browser_audit import BrowserAuditResponse
+from app.schemas.requirement_matching import RequirementMatchingResult
 
 logger = logging.getLogger(__name__)
 
 # ── Prompts ──────────────────────────────────────────────────────────────────
+
+MATCHING_SYSTEM_INSTRUCTION = """You are an expert software quality assurance auditor and systems analyst.
+Your task is to compare product requirements (PRD Findings) against codebase structure (GitHub Findings) and live web crawler logs (Browser Findings) to perform a gap analysis.
+
+You MUST return valid JSON that conforms exactly to the schema provided. Do not include any text outside the JSON object.
+Be objective and trace each requirement carefully to find corresponding files, features, or page components.
+"""
+
+MATCHING_ANALYSIS_PROMPT = """You are auditing a software implementation against its product specifications. Compare the requirements with the codebase and web browser findings:
+
+1. **Expected Requirements (PRD Findings)**:
+- Expected Pages/Screens: {prd_pages}
+- Expected Features: {prd_features}
+- Expected Forms: {prd_forms}
+- Expected User Flows: {prd_user_flows}
+
+2. **Codebase Implementation Details (GitHub Findings)**:
+- Tech Stack: {github_tech}
+- Codebase Components: {github_components}
+- Codebase Pages: {github_pages}
+- File Tree Structure: {github_tree}
+
+3. **Live Site Crawl Details (Browser Findings)**:
+- Visited URLs: {browser_pages}
+- Encounted Console Errors: {browser_errors}
+- Tested Forms: {browser_forms}
+
+---
+
+Your task is to perform a gap analysis. Classify each expected feature/page/form from the PRD findings into one of:
+1. **implemented_features**: Fully implemented. Cite files or page links as evidence.
+2. **partially_implemented_features**: Partially implemented (e.g., page exists, but some forms or validation rules are missing, or a user flow step failed). Describe what is completed and what is missing.
+3. **missing_features**: Expected in PRD, but not found in codebase or crawler. State its priority.
+
+Provide a `confidence_score` (between 0.0 and 1.0) based on the visibility and matches found, and an executive `summary` of the audit.
+"""
 
 GITHUB_SYSTEM_INSTRUCTION = """You are an expert software architect, security auditor, and codebase analyst.
 Your task is to analyze a GitHub repository's folder structure, config/manifest files, and dependency list to extract detailed project insights.
@@ -304,6 +342,115 @@ class GeminiService:
             len(result.frameworks),
             len(result.pages),
             len(result.components),
+        )
+
+        return result
+
+    def analyze_requirement_matching(
+        self, prd: PRDAnalysisResult, github: GithubAnalysisResultSchema, browser: Optional[BrowserAuditResponse]
+    ) -> RequirementMatchingResult:
+        """
+        Compare requirements with codebase and web browser findings and return RequirementMatchingResult.
+        """
+        # Format PRD Inputs
+        prd_pages = ", ".join([p.name for p in prd.pages]) or "None"
+        prd_features = ", ".join([f.name for f in prd.features]) or "None"
+        prd_forms = ", ".join([f.name for f in prd.forms]) or "None"
+        prd_user_flows = ", ".join([uf.name for uf in prd.user_flows]) or "None"
+
+        # Format GitHub Inputs
+        github_tech = ", ".join(github.technologies) or "None"
+        github_components = ", ".join([c.name for c in github.components]) or "None"
+        github_pages = ", ".join([p.name for p in github.pages]) or "None"
+        github_tree = json.dumps(github.folder_structure, indent=2)
+
+        # Format Browser Inputs
+        if browser:
+            browser_pages = ", ".join([p.url for p in browser.pages_audited]) or "None"
+            
+            all_errors = []
+            for p in browser.pages_audited:
+                all_errors.extend(p.console_errors)
+            browser_errors = "; ".join(all_errors) if all_errors else "None"
+            
+            all_forms = []
+            for p in browser.pages_audited:
+                all_forms.extend([f.form_action or f.form_id or "unnamed form" for f in p.form_submission_results])
+            browser_forms = ", ".join(all_forms) if all_forms else "None"
+        else:
+            browser_pages = "No browser crawl findings provided."
+            browser_errors = "No browser crawl findings provided."
+            browser_forms = "No browser crawl findings provided."
+
+        prompt = MATCHING_ANALYSIS_PROMPT.format(
+            prd_pages=prd_pages,
+            prd_features=prd_features,
+            prd_forms=prd_forms,
+            prd_user_flows=prd_user_flows,
+            github_tech=github_tech,
+            github_components=github_components,
+            github_pages=github_pages,
+            github_tree=github_tree,
+            browser_pages=browser_pages,
+            browser_errors=browser_errors,
+            browser_forms=browser_forms
+        )
+
+        logger.info("Sending requirements matching request to Gemini — %d chars", len(prompt))
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=MATCHING_SYSTEM_INSTRUCTION,
+                    response_mime_type="application/json",
+                    response_schema=RequirementMatchingResult,
+                    temperature=0.1,
+                ),
+            )
+
+            if not response.text:
+                raise GeminiError("Gemini returned an empty response.")
+
+            logger.debug("Raw Gemini response: %s", response.text[:500])
+
+        except Exception as e:
+            if isinstance(e, GeminiError):
+                raise
+            raise GeminiError(f"Gemini API call failed: {str(e)}")
+
+        # ── Parse and validate ──────────────────────────────────────────
+        try:
+            if hasattr(response, "parsed") and response.parsed is not None:
+                return response.parsed
+        except Exception as e:
+            logger.warning("Failed to access response.parsed directly for matching: %s. Falling back to manual JSON parsing.", str(e))
+
+        return self._parse_matching_response(response.text)
+
+    def _parse_matching_response(self, raw_response: str) -> RequirementMatchingResult:
+        cleaned = self._clean_json_response(raw_response)
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse Gemini response as JSON: %s", str(e))
+            raise GeminiError(f"Gemini returned invalid JSON for matching: {str(e)}")
+
+        # Validate with Pydantic
+        try:
+            result = RequirementMatchingResult.model_validate(data)
+        except Exception as e:
+            logger.error("Pydantic validation failed for matching: %s", str(e))
+            raise GeminiError(f"Gemini response did not match expected schema: {str(e)}")
+
+        logger.info(
+            "Requirement matching complete — %d implemented, %d partial, %d missing. Confidence: %.2f",
+            len(result.implemented_features),
+            len(result.partially_implemented_features),
+            len(result.missing_features),
+            result.confidence_score,
         )
 
         return result
