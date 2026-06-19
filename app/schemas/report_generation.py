@@ -41,6 +41,14 @@ class StudentReportSchema(BaseModel):
         ...,
         description="Percentage of requirements successfully implemented (0.0 to 100.0)"
     )
+    production_readiness_score: float = Field(
+        0.0,
+        description="Production readiness percentage rating (0.0 to 100.0)"
+    )
+    production_readiness_classification: str = Field(
+        "Prototype",
+        description="Maturity classification (Prototype -> Enterprise Ready)"
+    )
     features_implemented: List[str] = Field(
         default_factory=list,
         description="List of fully or partially implemented features with educational verification notes"
@@ -76,6 +84,14 @@ class CompanyReportSchema(BaseModel):
     completion_percentage: float = Field(
         ...,
         description="Percentage of requirements successfully implemented (0.0 to 100.0)"
+    )
+    production_readiness_score: float = Field(
+        0.0,
+        description="Production readiness percentage rating (0.0 to 100.0)"
+    )
+    production_readiness_classification: str = Field(
+        "Prototype",
+        description="Maturity classification (Prototype -> Enterprise Ready)"
     )
     features_implemented: List[str] = Field(
         default_factory=list,

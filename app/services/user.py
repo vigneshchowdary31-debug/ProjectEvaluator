@@ -31,6 +31,11 @@ class UserService:
     def update_user(self, user_id: str, data: UserUpdate) -> User:
         user = self.get_user(user_id)
         update_data = data.model_dump(exclude_unset=True)
+        if "password" in update_data and update_data["password"]:
+            from app.utils.security import hash_password
+            update_data["hashed_password"] = hash_password(update_data.pop("password"))
+        else:
+            update_data.pop("password", None)
         return self.user_repo.update(user, update_data)
 
     def delete_user(self, user_id: str) -> None:

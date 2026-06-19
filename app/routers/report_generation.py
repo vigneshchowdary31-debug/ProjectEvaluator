@@ -80,3 +80,40 @@ def get_project_reports(
             created_at=r.created_at.isoformat()
         ))
     return response_items
+
+
+@router.get(
+    "/{report_id}",
+    response_model=ReportGenerationResponse,
+    summary="Get a single generated report by ID",
+)
+def get_generated_report(
+    report_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieves a single GeneratedReport record by ID. Enforces ownership check.
+    """
+    repo = GeneratedReportRepository(db)
+    report = repo.get_by_id(report_id)
+    if not report:
+        raise NotFoundException(detail="Report not found")
+
+    # Verify project ownership
+    proj_repo = ProjectRepository(db)
+    project = proj_repo.get_by_id(report.project_id)
+    if not project:
+        raise NotFoundException(detail="Project not found")
+
+    if project.owner_id != current_user.id and not current_user.is_admin:
+        raise ForbiddenException(detail="You do not own this project")
+
+    return ReportGenerationResponse(
+        id=report.id,
+        project_id=report.project_id,
+        completion_percentage=report.completion_percentage,
+        student_report=report.student_report,
+        company_report=report.company_report,
+        created_at=report.created_at.isoformat()
+    )

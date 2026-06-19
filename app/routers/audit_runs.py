@@ -4,7 +4,7 @@ AuditRuns router — create, list, get, and update status of audit runs.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
@@ -16,6 +16,7 @@ from app.schemas.audit_run import (
     AuditRunStatusUpdate,
 )
 from app.services.audit_run import AuditRunService
+from app.utils.ws_manager import ws_manager
 
 router = APIRouter(prefix="/api/v1/audit-runs", tags=["Audit Runs"])
 
@@ -70,12 +71,24 @@ def update_audit_run_status(
 ):
     """
     Update the status of an audit run.
-
-    Valid transitions:
-    - pending → running, failed
-    - running → completed, failed
-    - failed → pending (retry)
-    - completed → (terminal state)
     """
     audit_run_service = AuditRunService(db)
     return audit_run_service.update_status(audit_run_id, data)
+
+
+@router.websocket("/{audit_run_id}/ws")
+async def audit_run_ws(
+    websocket: WebSocket,
+    audit_run_id: str,
+):
+    """
+    WebSocket endpoint for real-time audit logs.
+    """
+    await ws_manager.connect(audit_run_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(audit_run_id, websocket)
+    except Exception:
+        ws_manager.disconnect(audit_run_id, websocket)

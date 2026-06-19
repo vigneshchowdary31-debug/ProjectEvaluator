@@ -43,6 +43,8 @@ class ProjectService:
             name=data.name,
             description=data.description,
             repository_url=data.repository_url,
+            prd_url=data.prd_url,
+            deployment_url=data.deployment_url,
             owner_id=owner_id,
         )
         return self.project_repo.create(project)

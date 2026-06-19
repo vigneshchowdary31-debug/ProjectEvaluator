@@ -18,12 +18,16 @@ class ProjectCreate(BaseModel):
     name: str
     description: Optional[str] = None
     repository_url: Optional[str] = None
+    prd_url: Optional[str] = None
+    deployment_url: Optional[str] = None
 
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     repository_url: Optional[str] = None
+    prd_url: Optional[str] = None
+    deployment_url: Optional[str] = None
     status: Optional[ProjectStatus] = None
 
 
@@ -32,6 +36,8 @@ class ProjectResponse(BaseModel):
     name: str
     description: Optional[str]
     repository_url: Optional[str]
+    prd_url: Optional[str]
+    deployment_url: Optional[str]
     status: str
     owner_id: str
     created_at: datetime

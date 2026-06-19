@@ -98,6 +98,18 @@ async def request_id_middleware(request: Request, call_next):
 
 
 # ── Global exception handler ────────────────────────────────────────────────
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Handle all HTTPExceptions explicitly to retain status code and details."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Catch-all handler to prevent leaking internal errors."""
@@ -109,18 +121,21 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ── Register routers ────────────────────────────────────────────────────────
-from app.routers import auth, users, projects, reports, audit_runs, prd_analysis, github_analysis, browser_audit, requirement_matching, report_generation  # noqa: E402
+from app.routers import auth, users, projects, reports, audit_runs, prd_analysis, github_analysis, browser_audit, requirement_matching, report_generation, evidence, analytics, settings as settings_router  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(projects.router)
+app.include_router(report_generation.router)  # Registered first to prevent shadowing of /{report_id}
 app.include_router(reports.router)
 app.include_router(audit_runs.router)
 app.include_router(prd_analysis.router)
 app.include_router(github_analysis.router)
 app.include_router(browser_audit.router)
 app.include_router(requirement_matching.router)
-app.include_router(report_generation.router)
+app.include_router(evidence.router)
+app.include_router(analytics.router)
+app.include_router(settings_router.router)
 
 
 

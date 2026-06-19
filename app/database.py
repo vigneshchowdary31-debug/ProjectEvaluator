@@ -37,3 +37,29 @@ def init_db() -> None:
     import app.models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+
+    # SQLite migrations for existing databases
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        # Update projects table
+        try:
+            res = conn.execute(text("PRAGMA table_info(projects)")).fetchall()
+            columns = [r[1] for r in res]
+            if "prd_url" not in columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN prd_url VARCHAR(512)"))
+                conn.commit()
+            if "deployment_url" not in columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN deployment_url VARCHAR(512)"))
+                conn.commit()
+        except Exception:
+            pass
+
+        # Update users table
+        try:
+            res = conn.execute(text("PRAGMA table_info(users)")).fetchall()
+            columns = [r[1] for r in res]
+            if "company_name" not in columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN company_name VARCHAR(255)"))
+                conn.commit()
+        except Exception:
+            pass

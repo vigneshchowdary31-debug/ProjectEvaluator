@@ -51,7 +51,7 @@ class GoogleDriveService:
         else:
             logger.info("Google Drive service disabled (no GITHUB_CREDENTIALS_JSON path configured).")
 
-    def create_folder(self, name: str) -> Optional[str]:
+    def create_folder(self, name: str, parent_id: Optional[str] = None) -> Optional[str]:
         """
         Create a new folder in Google Drive.
         
@@ -67,8 +67,9 @@ class GoogleDriveService:
                 "mimeType": "application/vnd.google-apps.folder"
             }
             # Attach parent folder if defined
-            if self.parent_folder_id:
-                file_metadata["parents"] = [self.parent_folder_id]
+            target_parent = parent_id or self.parent_folder_id
+            if target_parent:
+                file_metadata["parents"] = [target_parent]
 
             folder = self.service.files().create(
                 body=file_metadata, 
@@ -117,6 +118,40 @@ class GoogleDriveService:
                 file_metadata["parents"] = [folder_id]
 
             media = MediaFileUpload(file_path, mimetype="image/png", resumable=True)
+            uploaded_file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields="id, webViewLink"
+            ).execute()
+
+            logger.info("Successfully uploaded '%s' to Google Drive.", file_name)
+            return uploaded_file.get("webViewLink")
+        except Exception as e:
+            logger.error("Failed to upload file '%s' to Google Drive: %s", file_name, str(e))
+            return None
+
+    def upload_file(self, file_path: str, file_name: str, mime_type: str, folder_id: Optional[str] = None) -> Optional[str]:
+        """
+        Upload any local file to Google Drive.
+
+        Returns:
+            webViewLink string if successful, else None.
+        """
+        if not self.enabled or not self.service:
+            return None
+
+        if not os.path.exists(file_path):
+            logger.error("Cannot upload: file does not exist at %s", file_path)
+            return None
+
+        try:
+            file_metadata = {
+                "name": file_name
+            }
+            if folder_id:
+                file_metadata["parents"] = [folder_id]
+
+            media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
             uploaded_file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,

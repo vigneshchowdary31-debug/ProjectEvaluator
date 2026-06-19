@@ -4,17 +4,18 @@ Projects router — CRUD for projects with nested report & audit-run listing.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
-from app.schemas.audit_run import AuditRunListResponse
+from app.schemas.audit_run import AuditRunListResponse, AuditRunResponse
 from app.schemas.project import ProjectCreate, ProjectListResponse, ProjectResponse, ProjectUpdate
 from app.schemas.report import ReportListResponse
 from app.services.audit_run import AuditRunService
 from app.services.project import ProjectService
 from app.services.report import ReportService
+from app.services.orchestrator import OrchestratorService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["Projects"])
 
@@ -120,3 +121,21 @@ def list_project_audit_runs(
     return AuditRunListResponse(
         items=runs, total=total, page=page, page_size=page_size
     )
+
+
+@router.post("/{project_id}/audit", response_model=AuditRunResponse, status_code=201)
+def trigger_project_audit(
+    project_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Trigger a comprehensive end-to-end background audit for a project.
+    """
+    project_service = ProjectService(db)
+    project = project_service.get_project(project_id)
+    project_service._check_ownership(project, current_user)
+    
+    orchestrator = OrchestratorService(db)
+    return orchestrator.trigger_audit(project_id, background_tasks, current_user.id)

@@ -62,10 +62,16 @@ REPORT_GENERATOR_PROMPT = """Create two separate, comprehensive project reports 
 - Completely missing: {match_missing}
 - Base implementation completion percentage: {calc_percentage:.1f}%
 
+5. **Production Readiness (Readiness Findings)**:
+- Maturity Rating Score: {readiness_score:.1f}%
+- Maturity Level Classification: {readiness_classification}
+
 ---
 
 Ensure BOTH reports include detailed lists for:
 - Completion Percentage (use {calc_percentage:.1f}% as your starting reference point)
+- Production Readiness Score (populate with {readiness_score:.1f})
+- Production Readiness Classification (populate with "{readiness_classification}")
 - Features Implemented
 - Missing Features
 - Security Findings
@@ -201,9 +207,12 @@ PRD DOCUMENT:
 """
 
 
-class GeminiError(Exception):
+from fastapi import HTTPException, status
+
+class GeminiError(HTTPException):
     """Raised when Gemini API interaction fails."""
-    pass
+    def __init__(self, detail: str = "Gemini API error"):
+        super().__init__(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=detail)
 
 
 class GeminiService:
@@ -516,7 +525,9 @@ class GeminiService:
         github: GithubAnalysisResultSchema,
         browser: Optional[BrowserAuditResponse],
         matching: RequirementMatchingResult,
-        calc_percentage: float
+        calc_percentage: float,
+        readiness_score: float = 0.0,
+        readiness_classification: str = "Prototype"
     ) -> GeminiGeneratedReportWrapper:
         """
         Synthesize PRD, GitHub, Browser, and Matching findings into Student and Company reports.
@@ -581,7 +592,9 @@ class GeminiService:
             match_implemented=match_implemented,
             match_partial=match_partial,
             match_missing=match_missing,
-            calc_percentage=calc_percentage
+            calc_percentage=calc_percentage,
+            readiness_score=readiness_score,
+            readiness_classification=readiness_classification
         )
 
         logger.info("Sending report generation request to Gemini — %d chars", len(prompt))

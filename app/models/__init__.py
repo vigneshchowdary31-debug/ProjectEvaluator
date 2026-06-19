@@ -8,5 +8,7 @@ from app.models.report import Report  # noqa: F401
 from app.models.audit_run import AuditRun  # noqa: F401
 from app.models.github_analysis import GithubAnalysis  # noqa: F401
 from app.models.generated_report import GeneratedReport  # noqa: F401
+from app.models.refresh_token import RefreshToken  # noqa: F401
+from app.models.evidence import Evidence  # noqa: F401
 
 
