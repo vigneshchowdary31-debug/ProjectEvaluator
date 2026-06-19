@@ -109,7 +109,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ── Register routers ────────────────────────────────────────────────────────
-from app.routers import auth, users, projects, reports, audit_runs, prd_analysis, github_analysis, browser_audit, requirement_matching  # noqa: E402
+from app.routers import auth, users, projects, reports, audit_runs, prd_analysis, github_analysis, browser_audit, requirement_matching, report_generation  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(users.router)
@@ -120,6 +120,8 @@ app.include_router(prd_analysis.router)
 app.include_router(github_analysis.router)
 app.include_router(browser_audit.router)
 app.include_router(requirement_matching.router)
+app.include_router(report_generation.router)
+
 
 
 

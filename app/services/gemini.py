@@ -8,6 +8,7 @@ Uses the google-generativeai SDK with structured output (JSON mode).
 import json
 import logging
 from typing import Optional
+from pydantic import BaseModel
 
 from google import genai
 from google.genai import types
@@ -17,10 +18,64 @@ from app.schemas.prd import PRDAnalysisResult
 from app.schemas.github import GithubAnalysisResultSchema
 from app.schemas.browser_audit import BrowserAuditResponse
 from app.schemas.requirement_matching import RequirementMatchingResult
+from app.schemas.report_generation import StudentReportSchema, CompanyReportSchema
+
+# Wrapper schema for Gemini multi-report generation
+class GeminiGeneratedReportWrapper(BaseModel):
+    student_report: StudentReportSchema
+    company_report: CompanyReportSchema
 
 logger = logging.getLogger(__name__)
 
 # ── Prompts ──────────────────────────────────────────────────────────────────
+
+REPORT_GENERATOR_SYSTEM_INSTRUCTION = """You are an expert technical evaluator and professional software auditor.
+Your task is to compile a detailed, audience-tailored project audit.
+You MUST return valid JSON matching the schema provided containing both `student_report` and `company_report`. Do not include any text outside the JSON object.
+
+Student Report focus: educational, highlighting programming mistakes, best practices, refactoring recommendations, and clear tutoring notes.
+Company Report focus: executive-level progress, product readiness, risk profiles (dependencies/security), maintainability, and strategic release advice.
+"""
+
+REPORT_GENERATOR_PROMPT = """Create two separate, comprehensive project reports (one for a Student Developer, one for a corporate Client Company) based on these gathered audit findings:
+
+1. **Expected requirements (PRD Findings)**:
+- Pages expected: {prd_pages}
+- Features expected: {prd_features}
+- User flows expected: {prd_user_flows}
+
+2. **Codebase details (GitHub Findings)**:
+- Languages & Tools: {github_tech}
+- Configured Frameworks: {github_frameworks}
+- Discovered components: {github_components}
+- Architectural findings: {github_rating}. Strengths: {github_strengths}. Weaknesses: {github_weaknesses}
+
+3. **Live crawler execution (Browser Findings)**:
+- Pages visited: {browser_pages}
+- Errors intercepted: {browser_errors}
+- Broken links: {browser_broken_links}
+- Form test results: {browser_form_tests}
+
+4. **Requirement gap analysis (Matching Findings)**:
+- Implemented: {match_implemented}
+- Partially implemented: {match_partial}
+- Completely missing: {match_missing}
+- Base implementation completion percentage: {calc_percentage:.1f}%
+
+---
+
+Ensure BOTH reports include detailed lists for:
+- Completion Percentage (use {calc_percentage:.1f}% as your starting reference point)
+- Features Implemented
+- Missing Features
+- Security Findings
+- UI Findings
+- Code Quality Findings
+- Recommendations
+
+For the Student Report, write an educational `educational_notes` section.
+For the Company Report, write a professional executive-level `executive_summary` section.
+"""
 
 MATCHING_SYSTEM_INSTRUCTION = """You are an expert software quality assurance auditor and systems analyst.
 Your task is to compare product requirements (PRD Findings) against codebase structure (GitHub Findings) and live web crawler logs (Browser Findings) to perform a gap analysis.
@@ -451,6 +506,137 @@ class GeminiService:
             len(result.partially_implemented_features),
             len(result.missing_features),
             result.confidence_score,
+        )
+
+        return result
+
+    def generate_project_reports(
+        self,
+        prd: PRDAnalysisResult,
+        github: GithubAnalysisResultSchema,
+        browser: Optional[BrowserAuditResponse],
+        matching: RequirementMatchingResult,
+        calc_percentage: float
+    ) -> GeminiGeneratedReportWrapper:
+        """
+        Synthesize PRD, GitHub, Browser, and Matching findings into Student and Company reports.
+        """
+        # Format PRD Inputs
+        prd_pages = ", ".join([p.name for p in prd.pages]) or "None"
+        prd_features = ", ".join([f.name for f in prd.features]) or "None"
+        prd_user_flows = ", ".join([uf.name for uf in prd.user_flows]) or "None"
+
+        # Format GitHub Inputs
+        github_tech = ", ".join(github.technologies) or "None"
+        github_frameworks = ", ".join(github.frameworks) or "None"
+        github_components = ", ".join([c.name for c in github.components]) or "None"
+        github_rating = github.architecture_quality.rating
+        github_strengths = ", ".join(github.architecture_quality.strengths) or "None"
+        github_weaknesses = ", ".join(github.architecture_quality.weaknesses) or "None"
+
+        # Format Browser Inputs
+        if browser:
+            browser_pages = ", ".join([p.url for p in browser.pages_audited]) or "None"
+            
+            all_errors = []
+            for p in browser.pages_audited:
+                all_errors.extend(p.console_errors)
+            browser_errors = "; ".join(all_errors) if all_errors else "None"
+            
+            all_broken = []
+            for p in browser.pages_audited:
+                all_broken.extend(p.broken_links)
+            browser_broken_links = ", ".join(all_broken) if all_broken else "None"
+            
+            all_tests = []
+            for p in browser.pages_audited:
+                for f in p.form_submission_results:
+                    all_tests.append(f"{f.form_id or 'form'}: {'success' if f.success else 'failed'} ({f.outcome})")
+            browser_form_tests = "; ".join(all_tests) if all_tests else "None"
+        else:
+            browser_pages = "No browser crawl findings provided."
+            browser_errors = "No browser crawl findings provided."
+            browser_broken_links = "No browser crawl findings provided."
+            browser_form_tests = "No browser crawl findings provided."
+
+        # Format Matching Inputs
+        match_implemented = ", ".join([f.name for f in matching.implemented_features]) or "None"
+        match_partial = ", ".join([f.name for f in matching.partially_implemented_features]) or "None"
+        match_missing = ", ".join([f.name for f in matching.missing_features]) or "None"
+
+        prompt = REPORT_GENERATOR_PROMPT.format(
+            prd_pages=prd_pages,
+            prd_features=prd_features,
+            prd_user_flows=prd_user_flows,
+            github_tech=github_tech,
+            github_frameworks=github_frameworks,
+            github_components=github_components,
+            github_rating=github_rating,
+            github_strengths=github_strengths,
+            github_weaknesses=github_weaknesses,
+            browser_pages=browser_pages,
+            browser_errors=browser_errors,
+            browser_broken_links=browser_broken_links,
+            browser_form_tests=browser_form_tests,
+            match_implemented=match_implemented,
+            match_partial=match_partial,
+            match_missing=match_missing,
+            calc_percentage=calc_percentage
+        )
+
+        logger.info("Sending report generation request to Gemini — %d chars", len(prompt))
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=REPORT_GENERATOR_SYSTEM_INSTRUCTION,
+                    response_mime_type="application/json",
+                    response_schema=GeminiGeneratedReportWrapper,
+                    temperature=0.2,
+                ),
+            )
+
+            if not response.text:
+                raise GeminiError("Gemini returned an empty response.")
+
+            logger.debug("Raw Gemini response: %s", response.text[:500])
+
+        except Exception as e:
+            if isinstance(e, GeminiError):
+                raise
+            raise GeminiError(f"Gemini API call failed: {str(e)}")
+
+        # ── Parse and validate ──────────────────────────────────────────
+        try:
+            if hasattr(response, "parsed") and response.parsed is not None:
+                return response.parsed
+        except Exception as e:
+            logger.warning("Failed to access response.parsed directly for report wrapper: %s. Falling back to manual JSON parsing.", str(e))
+
+        return self._parse_report_wrapper_response(response.text)
+
+    def _parse_report_wrapper_response(self, raw_response: str) -> GeminiGeneratedReportWrapper:
+        cleaned = self._clean_json_response(raw_response)
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse Gemini response as JSON: %s", str(e))
+            raise GeminiError(f"Gemini returned invalid JSON for reports: {str(e)}")
+
+        # Validate with Pydantic
+        try:
+            result = GeminiGeneratedReportWrapper.model_validate(data)
+        except Exception as e:
+            logger.error("Pydantic validation failed for report wrapper: %s", str(e))
+            raise GeminiError(f"Gemini response did not match expected schema: {str(e)}")
+
+        logger.info(
+            "Report generation complete — Student completion: %.1f%%, Company completion: %.1f%%",
+            result.student_report.completion_percentage,
+            result.company_report.completion_percentage,
         )
 
         return result
