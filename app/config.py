@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str = ""
     GITHUB_CACHE_TTL_HOURS: int = 24
 
+    # ── Google Drive ──────────────────────────────────────────────────
+    GOOGLE_CREDENTIALS_JSON: str = ""
+    GOOGLE_DRIVE_FOLDER_ID: str = ""
+
+
 
     # ── CORS ─────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = ["*"]
