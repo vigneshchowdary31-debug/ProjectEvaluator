@@ -25,7 +25,7 @@ class UIComponent(BaseModel):
 class Page(BaseModel):
     """A page/screen described in the PRD."""
     name: str = Field(..., description="Page name (e.g., 'Dashboard', 'Login', 'Settings')")
-    route: Optional[str] = Field(None, description="Suggested route path (e.g., '/dashboard')")
+    route: str = Field(default="", description="Suggested route path (e.g., '/dashboard')")
     description: str = Field(..., description="Purpose and behavior of this page")
     components: List[UIComponent] = Field(default_factory=list, description="UI components on this page")
     connected_pages: List[str] = Field(default_factory=list, description="Names of pages this page links to")
@@ -89,17 +89,17 @@ class Form(BaseModel):
     """A form described in the PRD."""
     name: str = Field(..., description="Form name (e.g., 'Registration Form', 'Create Project')")
     description: str = Field(..., description="What this form is for")
-    page: Optional[str] = Field(None, description="Page where this form appears")
+    page: str = Field(default="", description="Page where this form appears")
     fields: List[FormField] = Field(default_factory=list, description="Form fields")
-    submit_action: Optional[str] = Field(None, description="What happens on submission")
+    submit_action: str = Field(default="", description="What happens on submission")
 
 
 class UserFlowStep(BaseModel):
     """A single step in a user flow."""
     step_number: int = Field(..., description="Step order (1-indexed)")
     action: str = Field(..., description="What the user does")
-    page: Optional[str] = Field(None, description="Page where this step occurs")
-    expected_result: Optional[str] = Field(None, description="Expected system response")
+    page: str = Field(default="", description="Page where this step occurs")
+    expected_result: str = Field(default="", description="Expected system response")
 
 
 class UserFlow(BaseModel):

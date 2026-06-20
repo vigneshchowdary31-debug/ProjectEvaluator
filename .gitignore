@@ -11,6 +11,7 @@ env/
 
 # Environment variables
 .env
+gdrive_credentials.json
 
 # Database
 *.db
@@ -35,3 +36,6 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+
+# Node
+node_modules/

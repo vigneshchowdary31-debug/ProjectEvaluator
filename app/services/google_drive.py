@@ -49,7 +49,7 @@ class GoogleDriveService:
                     self.creds_path
                 )
         else:
-            logger.info("Google Drive service disabled (no GITHUB_CREDENTIALS_JSON path configured).")
+            logger.info("Google Drive service disabled (no GOOGLE_CREDENTIALS_JSON path configured).")
 
     def create_folder(self, name: str, parent_id: Optional[str] = None) -> Optional[str]:
         """

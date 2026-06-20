@@ -142,6 +142,25 @@ app.include_router(settings_router.router)
 
 
 
+
+# ── WebSocket Live Audit Streaming ──────────────────────────────────────────
+from fastapi import WebSocket, WebSocketDisconnect
+from app.utils.ws_manager import ws_manager
+
+@app.websocket("/ws/audit/{run_id}")
+async def audit_websocket(websocket: WebSocket, run_id: str):
+    await ws_manager.connect(run_id, websocket)
+    try:
+        while True:
+            # Keep-alive loop
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(run_id, websocket)
+    except Exception as e:
+        logger.warning("Error in WebSocket connection: %s", str(e))
+        ws_manager.disconnect(run_id, websocket)
+
+
 # ── Health check ─────────────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 def health_check():

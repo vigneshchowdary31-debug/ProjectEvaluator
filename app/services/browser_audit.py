@@ -27,7 +27,8 @@ from app.services.google_drive import GoogleDriveService
 logger = logging.getLogger(__name__)
 
 # Directory inside the workspace to temporarily store screenshots
-SCREENSHOT_DIR = "/Users/vigneshchowdary/Desktop/project auditor/screenshots"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SCREENSHOT_DIR = os.path.join(BASE_DIR, "screenshots")
 HTTP_TIMEOUT = 10.0
 
 

@@ -426,7 +426,7 @@ class GeminiService:
         github_tech = ", ".join(github.technologies) or "None"
         github_components = ", ".join([c.name for c in github.components]) or "None"
         github_pages = ", ".join([p.name for p in github.pages]) or "None"
-        github_tree = json.dumps(github.folder_structure, indent=2)
+        github_tree = github.folder_structure if isinstance(github.folder_structure, str) else json.dumps(github.folder_structure, indent=2)
 
         # Format Browser Inputs
         if browser:

@@ -20,7 +20,7 @@ class Severity(str, Enum):
 class ReportCreate(BaseModel):
     title: str
     summary: str
-    findings: Optional[List[Dict[str, Any]]] = None
+    findings: Optional[Any] = None
     severity: Severity = Severity.INFO
     project_id: str
     audit_run_id: Optional[str] = None
@@ -29,7 +29,7 @@ class ReportCreate(BaseModel):
 class ReportUpdate(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
-    findings: Optional[List[Dict[str, Any]]] = None
+    findings: Optional[Any] = None
     severity: Optional[Severity] = None
 
 
@@ -37,7 +37,7 @@ class ReportResponse(BaseModel):
     id: str
     title: str
     summary: str
-    findings: Optional[List[Dict[str, Any]]]
+    findings: Optional[Any]
     severity: str
     project_id: str
     audit_run_id: Optional[str]

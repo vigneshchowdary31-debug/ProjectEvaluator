@@ -45,6 +45,8 @@ class ParserError(Exception):
 class GithubParserService:
     """Service to interact with the public GitHub API and extract repository metadata."""
 
+    MANIFEST_FILENAMES = MANIFEST_FILENAMES
+
     def __init__(self):
         settings = get_settings()
         self.github_token = settings.GITHUB_TOKEN

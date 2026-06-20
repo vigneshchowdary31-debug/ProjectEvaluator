@@ -6,7 +6,13 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+import json
+from pydantic import BaseModel, Field, model_validator
+
+# NOTE: All schemas used as Gemini `response_schema` must avoid:
+#   - Dict[str, Any]  → generates `additionalProperties` (unsupported)
+#   - Optional[str]   → generates `anyOf` (unsupported)
+# Use `str` with `default=""` instead of `Optional[str]` for Gemini schemas.
 
 
 class GithubAnalysisRequest(BaseModel):
@@ -25,17 +31,17 @@ class GithubAnalysisRequest(BaseModel):
 class PageInfo(BaseModel):
     """Information about a page or primary endpoint found in the repository."""
     name: str = Field(..., description="Name of the page or route")
-    route: Optional[str] = Field(None, description="URL path or route (e.g. '/login', 'GET /users')")
-    file_path: Optional[str] = Field(None, description="Path to the file defining this page/route")
-    description: Optional[str] = Field(None, description="What this page or route does")
+    route: str = Field(default="", description="URL path or route (e.g. '/login', 'GET /users')")
+    file_path: str = Field(default="", description="Path to the file defining this page/route")
+    description: str = Field(default="", description="What this page or route does")
 
 
 class UIComponentInfo(BaseModel):
     """Information about a reusable UI component or software building block."""
     name: str = Field(..., description="Component name")
     type: str = Field(..., description="Component type (e.g., button, repository, card, context, modal)")
-    file_path: Optional[str] = Field(None, description="Path to the component file")
-    description: Optional[str] = Field(None, description="What this component is used for")
+    file_path: str = Field(default="", description="Path to the component file")
+    description: str = Field(default="", description="What this component is used for")
 
 
 class SecuritySeverity(str, Enum):
@@ -48,7 +54,7 @@ class SecurityIssue(BaseModel):
     """A detected security concern or potential vulnerability."""
     severity: SecuritySeverity = Field(..., description="Severity of the issue")
     issue: str = Field(..., description="Title/summary of the security concern")
-    file_path: Optional[str] = Field(None, description="File path containing the issue")
+    file_path: str = Field(default="", description="File path containing the issue")
     description: str = Field(..., description="Detailed description and remedy suggestion")
 
 
@@ -73,15 +79,24 @@ class GithubAnalysisResultSchema(BaseModel):
     frameworks: List[str] = Field(default_factory=list, description="Frameworks and major libraries (e.g., FastAPI, React, SQLAlchemy)")
     pages: List[PageInfo] = Field(default_factory=list, description="Main pages or endpoints detected")
     components: List[UIComponentInfo] = Field(default_factory=list, description="Architectural components or modular UI elements")
-    folder_structure: Dict[str, Any] = Field(default_factory=dict, description="Nested dictionary representing the folder layout")
+    folder_structure: str = Field(default="", description="JSON string representing the nested folder layout")
     security_issues: List[SecurityIssue] = Field(default_factory=list, description="List of potential security concerns")
     architecture_quality: ArchitectureQuality = Field(..., description="Architecture quality assessment")
+
+    @model_validator(mode="before")
+    @classmethod
+    def convert_folder_structure(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            fs = data.get("folder_structure")
+            if isinstance(fs, (dict, list)):
+                data["folder_structure"] = json.dumps(fs)
+        return data
 
 
 class GithubAnalysisResponse(BaseModel):
     """API response returned to the client."""
     repo_url: str = Field(..., description="The analyzed repository URL")
-    commit_sha: Optional[str] = Field(None, description="The commit SHA that was analyzed")
+    commit_sha: str = Field(default="", description="The commit SHA that was analyzed")
     is_cached: bool = Field(..., description="Whether the response came from database cache")
     analyzed_at: str = Field(..., description="ISO 8601 timestamp of the analysis")
     analysis: GithubAnalysisResultSchema = Field(..., description="Detailed structured analysis results")
