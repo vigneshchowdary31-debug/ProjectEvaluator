@@ -16,6 +16,14 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
+  // Tabs & RBAC state
+  const [activeTab, setActiveTab] = useState('overview');
+  const [rbacStatus, setRbacStatus] = useState(null);
+  const [rbacScores, setRbacScores] = useState(null);
+  const [rbacCoverage, setRbacCoverage] = useState([]);
+  const [rbacViolations, setRbacViolations] = useState([]);
+  const [selectedLockerRole, setSelectedLockerRole] = useState('Guest');
+
   // Audit Execution & WS console state
   const [auditing, setAuditing] = useState(false);
   const [activeRunId, setActiveRunId] = useState('');
@@ -29,7 +37,6 @@ export default function ProjectDetail() {
       const projRes = await api.get(API_PATHS.PROJECT_DETAIL(id));
       setProject(projRes.data);
       
-      // We pass page_size as a query param still
       const runsRes = await api.get(`${API_PATHS.PROJECT_RUNS(id)}?page_size=20`);
       setRuns(runsRes.data.items);
       
@@ -38,6 +45,24 @@ export default function ProjectDetail() {
 
       const reportsRes = await api.get(API_PATHS.PROJECT_REPORTS(id));
       setReports(reportsRes.data);
+
+      // Fetch RBAC data
+      try {
+        const rbacStatusRes = await api.get(`/api/v1/projects/${id}/rbac/status`);
+        setRbacStatus(rbacStatusRes.data);
+        if (rbacStatusRes.data && rbacStatusRes.data.rbac_enabled) {
+          const [scoresRes, coverageRes, violationsRes] = await Promise.all([
+            api.get(`/api/v1/projects/${id}/rbac/scores`),
+            api.get(`/api/v1/projects/${id}/rbac/coverage`),
+            api.get(`/api/v1/projects/${id}/rbac/violations`),
+          ]);
+          setRbacScores(scoresRes.data);
+          setRbacCoverage(coverageRes.data.coverage || []);
+          setRbacViolations(violationsRes.data.violations || []);
+        }
+      } catch (rbacErr) {
+        console.error('Failed to load RBAC results', rbacErr);
+      }
     } catch (err) {
       console.error(err);
       if (err.response && err.response.data && err.response.data.detail) {
@@ -49,6 +74,7 @@ export default function ProjectDetail() {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     fetchData();
@@ -126,6 +152,29 @@ export default function ProjectDetail() {
       setAuditing(false);
     }
   };
+
+  const getGroupedCoverage = () => {
+    const pages = {};
+    rbacCoverage.forEach(row => {
+      if (!pages[row.page]) {
+        pages[row.page] = { page: row.page, url: row.url, Guest: '-', User: '-', Admin: '-', Guest_img: null, User_img: null, Admin_img: null };
+      }
+      pages[row.page][row.role] = row.status;
+      pages[row.page][`${row.role}_img`] = row.screenshot_url;
+    });
+    return Object.values(pages);
+  };
+
+  const getRoleScreenshots = () => {
+    const screenshots = [];
+    rbacCoverage.forEach(row => {
+      if (row.role === selectedLockerRole && row.screenshot_url) {
+        screenshots.push({ url: row.screenshot_url, page: row.page });
+      }
+    });
+    return screenshots;
+  };
+
 
   if (loading) {
     return (
@@ -282,151 +331,363 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* Reports, Audit Runs & Evidence Tabs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Reports History */}
-        <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
-          <div className="flex items-center justify-between border-b border-white/5 pb-3">
-            <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-              <Award className="w-4 h-4 text-indigo-400" />
-              Audit Reports History
-            </h3>
-          </div>
-          
-          {reports.length === 0 ? (
-            <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider block py-6 text-center">No reports compiled yet.</span>
-          ) : (
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-              {reports.map((r, i) => (
-                <Link 
-                  key={r.id} 
-                  to={`/report/${r.id}`}
-                  className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:border-indigo-500/20 hover:bg-indigo-500/5 transition-all group"
-                >
-                  <div className="space-y-1">
-                    <span className="text-sm font-extrabold text-white group-hover:text-indigo-400 transition-all">
-                      Audit #{reports.length - i}
-                    </span>
-                    <span className="text-[10px] text-gray-500 block uppercase font-bold tracking-wider">
-                      {new Date(r.created_at).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-wider">Completion</span>
-                      <span className="text-sm font-black text-white">{r.completion_percentage.toFixed(0)}%</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-wider">Readiness</span>
-                      <span className="text-sm font-black text-white">
-                        {r.student_report.production_readiness_score.toFixed(0)}%
+      {/* Tabs Switcher */}
+      <div className="flex border-b border-white/5 pb-px gap-6">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={`pb-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
+            activeTab === 'overview' 
+              ? 'border-indigo-500 text-white' 
+              : 'border-transparent text-gray-500 hover:text-white'
+          }`}
+        >
+          Overview & Reports
+        </button>
+        <button
+          onClick={() => setActiveTab('security')}
+          className={`pb-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 flex items-center gap-2 ${
+            activeTab === 'security' 
+              ? 'border-indigo-500 text-white' 
+              : 'border-transparent text-gray-500 hover:text-white'
+          }`}
+        >
+          <ShieldAlert className="w-4 h-4 text-indigo-500" />
+          Security & RBAC Matrix
+        </button>
+      </div>
+
+      {activeTab === 'overview' ? (
+        <>
+          {/* Reports, Audit Runs & Evidence Tabs */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Reports History */}
+            <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <Award className="w-4 h-4 text-indigo-400" />
+                  Audit Reports History
+                </h3>
+              </div>
+              
+              {reports.length === 0 ? (
+                <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider block py-6 text-center">No reports compiled yet.</span>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {reports.map((r, i) => (
+                    <Link 
+                      key={r.id} 
+                      to={`/report/${r.id}`}
+                      className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:border-indigo-500/20 hover:bg-indigo-500/5 transition-all group"
+                    >
+                      <div className="space-y-1">
+                        <span className="text-sm font-extrabold text-white group-hover:text-indigo-400 transition-all">
+                          Audit #{reports.length - i}
+                        </span>
+                        <span className="text-[10px] text-gray-500 block uppercase font-bold tracking-wider">
+                          {new Date(r.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-wider">Completion</span>
+                          <span className="text-sm font-black text-white">{r.completion_percentage.toFixed(0)}%</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-wider">Readiness</span>
+                          <span className="text-sm font-black text-white">
+                            {r.student_report.production_readiness_score.toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Audit Run Jobs */}
+            <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
+              <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/5 pb-3">
+                <History className="w-4 h-4 text-indigo-400" />
+                Audit Runs
+              </h3>
+
+              {runs.length === 0 ? (
+                <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider block py-6 text-center">No runs logged yet.</span>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {runs.map((run) => (
+                    <div key={run.id} className="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center justify-between">
+                      <div className="space-y-1">
+                        <span className="text-xs text-gray-400 font-bold block truncate max-w-xs uppercase tracking-wider">ID: {run.id}</span>
+                        <span className="text-[10px] text-gray-500 block font-bold uppercase tracking-wider">
+                          Triggered: {new Date(run.created_at).toLocaleString()}
+                        </span>
+                      </div>
+
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                        run.status === 'completed' 
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                          : run.status === 'failed'
+                            ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                            : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 animate-pulse'
+                      }`}>
+                        {run.status === 'completed' && <CheckCircle className="w-3.5 h-3.5" />}
+                        {run.status === 'failed' && <XCircle className="w-3.5 h-3.5" />}
+                        {run.status}
                       </span>
                     </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Audit Run Jobs */}
-        <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
-          <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/5 pb-3">
-            <History className="w-4 h-4 text-indigo-400" />
-            Audit Runs
-          </h3>
-
-          {runs.length === 0 ? (
-            <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider block py-6 text-center">No runs logged yet.</span>
-          ) : (
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-              {runs.map((run) => (
-                <div key={run.id} className="p-4 bg-white/5 border border-white/5 rounded-xl flex items-center justify-between">
-                  <div className="space-y-1">
-                    <span className="text-xs text-gray-400 font-bold block truncate max-w-xs uppercase tracking-wider">ID: {run.id}</span>
-                    <span className="text-[10px] text-gray-500 block font-bold uppercase tracking-wider">
-                      Triggered: {new Date(run.created_at).toLocaleString()}
-                    </span>
-                  </div>
-
-                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
-                    run.status === 'completed' 
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                      : run.status === 'failed'
-                        ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                        : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 animate-pulse'
-                  }`}>
-                    {run.status === 'completed' && <CheckCircle className="w-3.5 h-3.5" />}
-                    {run.status === 'failed' && <XCircle className="w-3.5 h-3.5" />}
-                    {run.status}
-                  </span>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Evidences Section */}
-      <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
-        <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/5 pb-3">
-          <FileCode className="w-4 h-4 text-indigo-400" />
-          Evidence Locker ({evidences.length})
-        </h3>
-        
-        {evidences.length === 0 ? (
-          <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider block py-6 text-center">No evidences collected.</span>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {evidences.map((e) => (
-              <div key={e.id} className="p-4 bg-white/5 border border-white/5 rounded-xl flex flex-col justify-between gap-3 text-xs">
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-extrabold uppercase rounded tracking-widest text-[9px]">
-                      {e.evidence_type}
-                    </span>
-                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-                      {new Date(e.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                  
-                  {e.file_path && (
-                    <div className="text-gray-400 font-mono truncate mb-1.5" title={e.file_path}>
-                      File: {e.file_path.split('/').pop()}
-                    </div>
-                  )}
-                  {e.line_range && <span className="text-gray-500 font-mono block mb-1">Lines: {e.line_range}</span>}
-                </div>
-
-                {e.screenshot_url ? (
-                  <div className="space-y-2">
-                    <div className="aspect-video w-full rounded-lg overflow-hidden border border-white/5 bg-neutral-950">
-                      <img 
-                        src={e.screenshot_url} 
-                        alt="Evidence Screenshot" 
-                        className="w-full h-full object-cover hover:scale-105 transition-all duration-300"
-                        onError={(el) => { el.target.style.display = 'none'; }}
-                      />
-                    </div>
-                    <a 
-                      href={e.screenshot_url} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="w-full block py-2 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/10 text-indigo-400 font-extrabold text-[10px] uppercase rounded-lg tracking-wider text-center transition-all"
-                    >
-                      View Fullsize
-                    </a>
-                  </div>
-                ) : e.details ? (
-                  <div className="bg-[#0c0c0e] p-2 border border-white/5 rounded-lg text-[10px] text-gray-500 max-h-24 overflow-y-auto font-mono whitespace-pre-wrap">
-                    {e.details}
-                  </div>
-                ) : null}
-              </div>
-            ))}
           </div>
-        )}
-      </div>
+
+          {/* Evidences Section */}
+          <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
+            <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/5 pb-3">
+              <FileCode className="w-4 h-4 text-indigo-400" />
+              Evidence Locker ({evidences.length})
+            </h3>
+            
+            {evidences.length === 0 ? (
+              <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider block py-6 text-center">No evidences collected.</span>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {evidences.map((e) => (
+                  <div key={e.id} className="p-4 bg-white/5 border border-white/5 rounded-xl flex flex-col justify-between gap-3 text-xs">
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-extrabold uppercase rounded tracking-widest text-[9px]">
+                          {e.evidence_type}
+                        </span>
+                        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                          {new Date(e.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      
+                      {e.file_path && (
+                        <div className="text-gray-400 font-mono truncate mb-1.5" title={e.file_path}>
+                          File: {e.file_path.split('/').pop()}
+                        </div>
+                      )}
+                      {e.line_range && <span className="text-gray-500 font-mono block mb-1">Lines: {e.line_range}</span>}
+                    </div>
+
+                    {e.screenshot_url ? (
+                      <div className="space-y-2">
+                        <div className="aspect-video w-full rounded-lg overflow-hidden border border-white/5 bg-neutral-950">
+                          <img 
+                            src={e.screenshot_url} 
+                            alt="Evidence Screenshot" 
+                            className="w-full h-full object-cover hover:scale-105 transition-all duration-300"
+                            onError={(el) => { el.target.style.display = 'none'; }}
+                          />
+                        </div>
+                        <a 
+                          href={e.screenshot_url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="w-full block py-2 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/10 text-indigo-400 font-extrabold text-[10px] uppercase rounded-lg tracking-wider text-center transition-all"
+                        >
+                          View Fullsize
+                        </a>
+                      </div>
+                    ) : e.details ? (
+                      <div className="bg-[#0c0c0e] p-2 border border-white/5 rounded-lg text-[10px] text-gray-500 max-h-24 overflow-y-auto font-mono whitespace-pre-wrap">
+                        {e.details}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        /* RBAC Security Tab Content */
+        <div className="space-y-8 animate-shimmer-off">
+          {(!rbacStatus || !rbacStatus.rbac_enabled) ? (
+            <div className="glass-card rounded-2xl p-12 border border-white/5 text-center flex flex-col items-center justify-center gap-3">
+              <ShieldAlert className="w-12 h-12 text-gray-600" />
+              <h3 className="text-lg font-bold text-gray-300">RBAC Testing Not Enabled</h3>
+              <p className="text-gray-500 text-sm max-w-sm">
+                Enable RBAC multi-role crawling and input test credentials in the project configuration to analyze role boundaries and access levels.
+              </p>
+            </div>
+          ) : rbacStatus.status === 'UNTESTED' ? (
+            <div className="glass-card rounded-2xl p-12 border border-white/5 text-center flex flex-col items-center justify-center gap-3">
+              <RefreshCw className="w-12 h-12 text-indigo-500 animate-pulse" />
+              <h3 className="text-lg font-bold text-gray-300">RBAC Audit Pending</h3>
+              <p className="text-gray-500 text-sm max-w-sm">
+                Run a new project audit to execute multi-role crawling and compile security scores.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Scores Grid */}
+              {rbacScores && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <div className="glass-card rounded-2xl p-6 border border-emerald-500/20 text-center relative overflow-hidden">
+                    <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-widest mb-2">Overall Score</span>
+                    <span className="text-3xl font-black text-emerald-400">{rbacScores.overall_score.toFixed(1)}%</span>
+                  </div>
+                  <div className="glass-card rounded-2xl p-6 border border-white/5 text-center">
+                    <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-widest mb-2">Authentication</span>
+                    <span className="text-3xl font-black text-indigo-400">{rbacScores.auth_score.toFixed(1)}%</span>
+                  </div>
+                  <div className="glass-card rounded-2xl p-6 border border-white/5 text-center">
+                    <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-widest mb-2">Authorization</span>
+                    <span className="text-3xl font-black text-indigo-400">{rbacScores.authz_score.toFixed(1)}%</span>
+                  </div>
+                  <div className="glass-card rounded-2xl p-6 border border-white/5 text-center">
+                    <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-widest mb-2">Session Security</span>
+                    <span className="text-3xl font-black text-indigo-400">{rbacScores.session_score.toFixed(1)}%</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Coverage Matrix Table */}
+              <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/5 pb-3">
+                  Role Coverage Matrix
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/5 text-gray-500 font-bold uppercase tracking-widest text-[9px]">
+                        <th className="py-3 px-4">Page Path</th>
+                        <th className="py-3 px-4 text-center">Guest Access</th>
+                        <th className="py-3 px-4 text-center">User Access</th>
+                        <th className="py-3 px-4 text-center">Admin Access</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getGroupedCoverage().map((row, idx) => (
+                        <tr key={idx} className="border-b border-white/5 hover:bg-white/5 transition-all">
+                          <td className="py-3 px-4 font-mono text-gray-300 truncate max-w-xs">{row.page}</td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              row.Guest === 'ALLOWED' ? 'bg-emerald-500/10 text-emerald-400' :
+                              row.Guest === 'BLOCKED' ? 'bg-neutral-500/10 text-gray-400' :
+                              row.Guest === 'PRIVILEGE_ESCALATION' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'text-gray-600'
+                            }`}>
+                              {row.Guest}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              row.User === 'ALLOWED' ? 'bg-emerald-500/10 text-emerald-400' :
+                              row.User === 'BLOCKED' ? 'bg-neutral-500/10 text-gray-400' :
+                              row.User === 'PRIVILEGE_ESCALATION' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'text-gray-600'
+                            }`}>
+                              {row.User}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              row.Admin === 'ALLOWED' ? 'bg-emerald-500/10 text-emerald-400' :
+                              row.Admin === 'BLOCKED' ? 'bg-neutral-500/10 text-gray-400' :
+                              row.Admin === 'PRIVILEGE_ESCALATION' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'text-gray-600'
+                            }`}>
+                              {row.Admin}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Privilege Escalations & Violations */}
+              <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/5 pb-3">
+                  Authorization Violations
+                </h3>
+                {rbacViolations.length === 0 ? (
+                  <span className="text-emerald-400 text-xs font-semibold uppercase tracking-wider block py-4 text-center">
+                    ✓ No administrative privilege isolation boundary breaches detected.
+                  </span>
+                ) : (
+                  <div className="space-y-3">
+                    {rbacViolations.map((v, i) => (
+                      <div key={i} className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl flex flex-col gap-1.5 text-xs text-rose-400 font-semibold leading-relaxed">
+                        <div className="flex items-center justify-between">
+                          <span className="font-black uppercase tracking-wider text-[10px] bg-rose-500/20 px-2 py-0.5 rounded">
+                            {v.severity.toUpperCase()} VIOLATION
+                          </span>
+                          <span className="font-mono text-gray-400">{v.target_route}</span>
+                        </div>
+                        <p className="text-gray-300 font-medium text-xs mt-1">{v.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Role Evidence Screenshots */}
+              <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-6">
+                <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                    Role Evidence Locker
+                  </h3>
+                  {/* Selector Buttons */}
+                  <div className="flex bg-neutral-900 rounded-lg p-0.5 gap-1">
+                    {['Guest', 'User', 'Admin'].map(role => (
+                      <button
+                        key={role}
+                        onClick={() => setSelectedLockerRole(role)}
+                        className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${
+                          selectedLockerRole === role
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-gray-500 hover:text-white'
+                        }`}
+                      >
+                        {role}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Screenshots Carousel/Grid */}
+                {getRoleScreenshots().length === 0 ? (
+                  <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider block py-6 text-center">
+                    No screenshots compiled under {selectedLockerRole} context.
+                  </span>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {getRoleScreenshots().map((scr, idx) => (
+                      <div key={idx} className="p-3 bg-white/5 border border-white/5 rounded-xl space-y-2 text-xs">
+                        <div className="aspect-video w-full rounded-lg overflow-hidden border border-white/5 bg-neutral-950">
+                          <img
+                            src={scr.url}
+                            alt="Role Evidence"
+                            className="w-full h-full object-cover hover:scale-105 transition-all duration-300"
+                            onError={(el) => { el.target.style.display = 'none'; }}
+                          />
+                        </div>
+                        <div className="text-[10px] text-gray-400 font-mono truncate" title={scr.page}>
+                          Path: {scr.page}
+                        </div>
+                        <a
+                          href={scr.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full block py-1.5 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/10 text-indigo-400 font-extrabold text-[9px] uppercase rounded-lg tracking-wider text-center transition-all"
+                        >
+                          View Screenshot
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }

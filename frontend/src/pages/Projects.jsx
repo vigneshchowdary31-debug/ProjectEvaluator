@@ -20,6 +20,15 @@ export default function Projects() {
     repository_url: '',
     prd_url: '',
     deployment_url: '',
+    rbac_enabled: false,
+    admin_url: '',
+    user_url: '',
+    admin_email: '',
+    admin_password: '',
+    user_email: '',
+    user_password: '',
+    has_admin_credentials: false,
+    has_user_credentials: false,
   });
 
   const fetchProjects = async () => {
@@ -84,18 +93,51 @@ export default function Projects() {
       repository_url: '',
       prd_url: '',
       deployment_url: '',
+      rbac_enabled: false,
+      admin_url: '',
+      user_url: '',
+      admin_email: '',
+      admin_password: '',
+      user_email: '',
+      user_password: '',
+      has_admin_credentials: false,
+      has_user_credentials: false,
     });
     setModalOpen(true);
   };
 
-  const handleOpenEdit = (p) => {
+  const handleOpenEdit = async (p) => {
     setEditingProject(p);
+    
+    let rbac_enabled = p.rbac_enabled || false;
+    let has_admin = false;
+    let has_user = false;
+    try {
+      const statusRes = await api.get(`/api/v1/projects/${p.id}/rbac/status`);
+      if (statusRes.data) {
+        rbac_enabled = statusRes.data.rbac_enabled;
+        has_admin = statusRes.data.has_admin_credentials;
+        has_user = statusRes.data.has_user_credentials;
+      }
+    } catch (e) {
+      console.error('Failed to fetch RBAC status', e);
+    }
+
     setFormData({
       name: p.name,
       description: p.description || '',
       repository_url: p.repository_url || '',
       prd_url: p.prd_url || '',
       deployment_url: p.deployment_url || '',
+      rbac_enabled: rbac_enabled,
+      admin_url: p.admin_url || '',
+      user_url: p.user_url || '',
+      admin_email: '',
+      admin_password: '',
+      user_email: '',
+      user_password: '',
+      has_admin_credentials: has_admin,
+      has_user_credentials: has_user,
     });
     setModalOpen(true);
   };
@@ -103,13 +145,40 @@ export default function Projects() {
   const handleModalSubmit = async (e) => {
     e.preventDefault();
     try {
+      const projectPayload = {
+        name: formData.name,
+        description: formData.description,
+        repository_url: formData.repository_url,
+        prd_url: formData.prd_url,
+        deployment_url: formData.deployment_url,
+        rbac_enabled: formData.rbac_enabled,
+        admin_url: formData.admin_url || null,
+        user_url: formData.user_url || null,
+      };
+
+      let projectId = '';
       if (editingProject) {
-        // Update
-        await api.put(API_PATHS.PROJECT_DETAIL(editingProject.id), formData);
+        projectId = editingProject.id;
+        await api.put(API_PATHS.PROJECT_DETAIL(projectId), projectPayload);
       } else {
-        // Create
-        await api.post(API_PATHS.PROJECTS, formData);
+        const res = await api.post(API_PATHS.PROJECTS, projectPayload);
+        projectId = res.data.id;
       }
+
+      // If RBAC is enabled, save/update the credentials
+      if (formData.rbac_enabled) {
+        const credsPayload = {
+          rbac_enabled: true,
+          admin_url: formData.admin_url || null,
+          admin_email: formData.admin_email || null,
+          admin_password: formData.admin_password || null,
+          user_url: formData.user_url || null,
+          user_email: formData.user_email || null,
+          user_password: formData.user_password || null,
+        };
+        await api.post(`/api/v1/projects/${projectId}/rbac/credentials`, credsPayload);
+      }
+
       setModalOpen(false);
       fetchProjects();
     } catch (err) {
@@ -117,6 +186,7 @@ export default function Projects() {
       alert(err.response?.data?.detail || 'Failed to save project.');
     }
   };
+
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this project? All associated reports, audit runs, and evidence will be permanently deleted.')) {
@@ -272,90 +342,181 @@ export default function Projects() {
 
       {/* Register/Edit Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg glass-card rounded-2xl border border-white/10 shadow-2xl p-8 relative overflow-hidden">
-            <h3 className="text-xl font-black text-white uppercase tracking-wider mb-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg glass-card rounded-2xl border border-white/10 shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-hidden">
+            <h3 className="text-lg font-black text-white uppercase tracking-wider mb-4 shrink-0">
               {editingProject ? 'Edit Project Config' : 'Register New Project'}
             </h3>
 
-            <form onSubmit={handleModalSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  Project Title
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
-                  placeholder="E.g., Day Tracker Android App"
-                />
+            <form onSubmit={handleModalSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              {/* Scrollable Fields Wrapper */}
+              <div className="flex-1 overflow-y-auto pr-1.5 space-y-4 mb-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
+                    Project Title
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
+                    placeholder="E.g., Day Tracker Android App"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    rows="3"
+                    className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
+                    placeholder="Provide a summary of the project scope and tech stack..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
+                    GitHub Repository URL
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.repository_url}
+                    onChange={(e) => setFormData({ ...formData, repository_url: e.target.value })}
+                    className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
+                    placeholder="https://github.com/owner/repo"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
+                    PRD Google Doc URL
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.prd_url}
+                    onChange={(e) => setFormData({ ...formData, prd_url: e.target.value })}
+                    className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
+                    placeholder="https://docs.google.com/document/d/..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
+                    Production Deployment URL
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.deployment_url}
+                    onChange={(e) => setFormData({ ...formData, deployment_url: e.target.value })}
+                    className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
+                    placeholder="https://my-app-live.web.app"
+                  />
+                </div>
+
+                {/* RBAC Scan Toggle */}
+                <div className="flex items-center justify-between p-3.5 bg-white/5 border border-white/5 rounded-xl">
+                  <div>
+                    <span className="text-xs font-bold text-gray-300 uppercase tracking-wider block">Enable RBAC Testing</span>
+                    <span className="text-[10px] text-gray-500">Scan role-specific portals, session metrics, and boundary limits.</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={formData.rbac_enabled}
+                    onChange={(e) => setFormData({ ...formData, rbac_enabled: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 border-white/10 rounded bg-[#0a0a0d] focus:ring-indigo-500"
+                  />
+                </div>
+
+                {formData.rbac_enabled && (
+                  <div className="space-y-3.5 p-4 bg-white/5 border border-white/5 rounded-xl max-h-60 overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Admin Portal Path</label>
+                        <input
+                          type="text"
+                          value={formData.admin_url}
+                          onChange={(e) => setFormData({ ...formData, admin_url: e.target.value })}
+                          className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
+                          placeholder="E.g., /admin/login"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">User Dashboard Path</label>
+                        <input
+                          type="text"
+                          value={formData.user_url}
+                          onChange={(e) => setFormData({ ...formData, user_url: e.target.value })}
+                          className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
+                          placeholder="E.g., /login"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Admin Email</label>
+                        <input
+                          type="text"
+                          value={formData.admin_email}
+                          onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })}
+                          className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
+                          placeholder={formData.has_admin_credentials ? "•••••••• (Saved)" : "admin@test.com"}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Admin Password</label>
+                        <input
+                          type="password"
+                          value={formData.admin_password}
+                          onChange={(e) => setFormData({ ...formData, admin_password: e.target.value })}
+                          className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
+                          placeholder={formData.has_admin_credentials ? "••••••••" : "Password123"}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">User Email</label>
+                        <input
+                          type="text"
+                          value={formData.user_email}
+                          onChange={(e) => setFormData({ ...formData, user_email: e.target.value })}
+                          className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
+                          placeholder={formData.has_user_credentials ? "•••••••• (Saved)" : "user@test.com"}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">User Password</label>
+                        <input
+                          type="password"
+                          value={formData.user_password}
+                          onChange={(e) => setFormData({ ...formData, user_password: e.target.value })}
+                          className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
+                          placeholder={formData.has_user_credentials ? "••••••••" : "Password123"}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  Description
-                </label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows="3"
-                  className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
-                  placeholder="Provide a summary of the project scope and tech stack..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  GitHub Repository URL
-                </label>
-                <input
-                  type="url"
-                  value={formData.repository_url}
-                  onChange={(e) => setFormData({ ...formData, repository_url: e.target.value })}
-                  className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
-                  placeholder="https://github.com/owner/repo"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  PRD Google Doc URL
-                </label>
-                <input
-                  type="url"
-                  value={formData.prd_url}
-                  onChange={(e) => setFormData({ ...formData, prd_url: e.target.value })}
-                  className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
-                  placeholder="https://docs.google.com/document/d/..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  Production Deployment URL
-                </label>
-                <input
-                  type="url"
-                  value={formData.deployment_url}
-                  onChange={(e) => setFormData({ ...formData, deployment_url: e.target.value })}
-                  className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
-                  placeholder="https://my-app-live.web.app"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
+              {/* Fixed Footer Buttons */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-white/5 shrink-0">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-5 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-sm font-semibold text-gray-300 transition-all"
+                  className="px-5 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-semibold text-gray-300 transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold tracking-wider uppercase transition-all shadow-lg hover:shadow-indigo-500/25"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold tracking-wider uppercase transition-all shadow-lg hover:shadow-indigo-500/25"
                 >
                   Save Project
                 </button>
@@ -364,6 +525,7 @@ export default function Projects() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

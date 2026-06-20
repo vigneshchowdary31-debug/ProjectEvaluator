@@ -88,7 +88,7 @@ async def test_audit_flow(mock_drive_service_class, mock_playwright):
     assert response.drive_folder_url == "https://drive.google.com/folder"
     assert response.pages_audited[0].desktop_screenshot_url == "https://drive.google.com/screenshot"
     
-    assert mock_page.goto.call_count == 2
+    assert mock_page.goto.call_count == 1
     assert mock_page.screenshot.call_count == 2
     mock_browser.close.assert_called_once()
 

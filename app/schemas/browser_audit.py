@@ -22,6 +22,16 @@ class BrowserAuditRequest(BaseModel):
         default=True,
         description="If True, detect forms, fill them with test values, and simulate submissions"
     )
+    rbac_enabled: bool = Field(
+        default=False,
+        description="Enable RBAC multi-role crawling and testing"
+    )
+    admin_url: Optional[str] = Field(None, description="Admin panel path")
+    admin_email: Optional[str] = Field(None, description="Admin email")
+    admin_password: Optional[str] = Field(None, description="Admin password")
+    user_url: Optional[str] = Field(None, description="Regular user dashboard path")
+    user_email: Optional[str] = Field(None, description="Regular user email")
+    user_password: Optional[str] = Field(None, description="Regular user password")
 
 
 class FormFieldTestResult(BaseModel):
@@ -44,6 +54,8 @@ class PageAuditResult(BaseModel):
     """Findings collected for a single page during the crawl."""
     url: str = Field(..., description="The audited page URL")
     status_code: Optional[int] = Field(None, description="HTTP status code of the page load")
+    role: str = Field(default="Guest", description="The role context under which this page was audited (Guest | User | Admin)")
+    access_status: str = Field(default="allowed", description="Permission access classification (allowed | blocked | escalated)")
     desktop_screenshot_url: Optional[str] = Field(None, description="Shareable URL of the desktop screenshot")
     mobile_screenshot_url: Optional[str] = Field(None, description="Shareable URL of the mobile screenshot")
     console_errors: List[str] = Field(default_factory=list, description="Intercepted console errors or warnings")

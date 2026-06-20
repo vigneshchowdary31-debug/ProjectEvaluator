@@ -48,8 +48,7 @@ class ProjectRepository:
 
     def update(self, project: Project, data: dict) -> Project:
         for key, value in data.items():
-            if value is not None:
-                setattr(project, key, value)
+            setattr(project, key, value)
         self.db.commit()
         self.db.refresh(project)
         return project

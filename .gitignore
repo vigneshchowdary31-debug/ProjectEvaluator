@@ -39,3 +39,6 @@ build/
 
 # Node
 node_modules/
+
+# Secrets
+local_secrets.enc

@@ -20,6 +20,9 @@ class ProjectCreate(BaseModel):
     repository_url: Optional[str] = None
     prd_url: Optional[str] = None
     deployment_url: Optional[str] = None
+    rbac_enabled: Optional[bool] = False
+    admin_url: Optional[str] = None
+    user_url: Optional[str] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -29,6 +32,9 @@ class ProjectUpdate(BaseModel):
     prd_url: Optional[str] = None
     deployment_url: Optional[str] = None
     status: Optional[ProjectStatus] = None
+    rbac_enabled: Optional[bool] = None
+    admin_url: Optional[str] = None
+    user_url: Optional[str] = None
 
 
 class ProjectResponse(BaseModel):
@@ -40,10 +46,14 @@ class ProjectResponse(BaseModel):
     deployment_url: Optional[str]
     status: str
     owner_id: str
+    rbac_enabled: bool
+    admin_url: Optional[str]
+    user_url: Optional[str]
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
 
 
 class ProjectListResponse(BaseModel):

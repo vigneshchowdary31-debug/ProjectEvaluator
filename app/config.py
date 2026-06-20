@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     GOOGLE_CREDENTIALS_JSON: str = ""
     GOOGLE_DRIVE_FOLDER_ID: str = ""
 
-
+    # ── Secret Locker ─────────────────────────────────────────────────
+    SECRETS_ENCRYPTION_KEY: str = ""
 
     # ── CORS ─────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = ["*"]

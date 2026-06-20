@@ -28,6 +28,10 @@ class Project(Base):
     prd_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     deployment_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="active")  # active | archived
+    rbac_enabled: Mapped[bool] = mapped_column(default=False)
+    admin_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    user_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    secret_reference: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     owner_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False
     )

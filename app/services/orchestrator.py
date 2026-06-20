@@ -37,9 +37,13 @@ from app.services.report_generation import ReportGenerationService
 from app.services.google_drive import GoogleDriveService
 from app.services.security_engine import AdvancedSecurityEngine
 from app.services.readiness_evaluator import ProductionReadinessEvaluator
+from app.models.rbac_result import RBACAuditResult
+from app.services.secret_manager import SecretManagerService
+from app.services.rbac_security import RBACSecurityEngine
 
 from app.utils.ws_manager import ws_manager
 from app.utils.exceptions import NotFoundException
+
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +66,9 @@ class OrchestratorService:
         self.drive_service = GoogleDriveService()
         self.security_engine = AdvancedSecurityEngine()
         self.readiness_evaluator = ProductionReadinessEvaluator()
+        self.rbac_security = RBACSecurityEngine()
+        self.secret_manager = SecretManagerService()
+
 
     def trigger_audit(self, project_id: str, background_tasks: BackgroundTasks, user_id: str) -> AuditRun:
         """Create a pending audit run and trigger background execution."""
@@ -234,6 +241,7 @@ class OrchestratorService:
                 return
 
             # ── Step 3: Headless Playwright crawling & mobile testing ───────
+            has_credentials = False
             if project.deployment_url:
                 await log_step("browser", 55, "Launching headless Playwright crawler on deployment URL...")
                 try:
@@ -245,7 +253,38 @@ class OrchestratorService:
                     else:
                         self.browser_service.drive_service.enabled = False
 
-                    browser_result = await self.browser_service.audit(BrowserAuditRequest(url=project.deployment_url, max_pages=5, test_forms=True))
+                    # Load credentials if RBAC is enabled
+                    admin_email = None
+                    admin_password = None
+                    user_email = None
+                    user_password = None
+                    rbac_enabled = bool(project.rbac_enabled)
+
+                    if rbac_enabled and project.secret_reference:
+                        try:
+                            creds = self.secret_manager.retrieve_credentials(project.secret_reference)
+                            if creds:
+                                admin_email = creds.get("admin", {}).get("email")
+                                admin_password = creds.get("admin", {}).get("password")
+                                user_email = creds.get("user", {}).get("email")
+                                user_password = creds.get("user", {}).get("password")
+                                if (admin_email and admin_password) or (user_email and user_password):
+                                    has_credentials = True
+                        except Exception as cred_err:
+                            await log_step("browser", 58, f"Failed to retrieve RBAC credentials: {str(cred_err)}. Proceeding with guest-only audit.")
+
+                    browser_result = await self.browser_service.audit(BrowserAuditRequest(
+                        url=project.deployment_url,
+                        max_pages=5,
+                        test_forms=True,
+                        rbac_enabled=rbac_enabled,
+                        admin_url=project.admin_url,
+                        admin_email=admin_email,
+                        admin_password=admin_password,
+                        user_url=project.user_url,
+                        user_email=user_email,
+                        user_password=user_password
+                    ))
                     
                     # Restore drive configuration
                     self.browser_service.drive_service.enabled = old_enabled
@@ -255,6 +294,48 @@ class OrchestratorService:
                     await log_step("browser", 70, f"Crawler failed: {str(e)}.", is_error=True)
             else:
                 await log_step("browser", 70, "No Deployment URL configured. Skipping web crawl testing.")
+
+            # ── Step 3.5: RBAC Security Assessment & Report ──────────────────
+            await log_step("security", 72, "Running RBAC access boundary assessment...")
+            try:
+                rbac_metrics = self.rbac_security.evaluate(project, browser_result, has_credentials)
+                
+                # Save RBAC audit results in the DB
+                db_rbac_result = RBACAuditResult(
+                    audit_run_id=run_id,
+                    project_id=project_id,
+                    status=rbac_metrics["status"],
+                    auth_score=rbac_metrics["auth_score"],
+                    authz_score=rbac_metrics["authz_score"],
+                    session_score=rbac_metrics["session_score"],
+                    overall_score=rbac_metrics["overall_score"],
+                    role_coverage_matrix=rbac_metrics["role_coverage_matrix"],
+                    violations=rbac_metrics["violations"],
+                    findings=rbac_metrics["findings"],
+                    created_at=datetime.now(timezone.utc)
+                )
+                self.db.add(db_rbac_result)
+                self.db.commit()
+                
+                # Save RBAC findings to the Report table so they show up in generic reports
+                if rbac_metrics["status"] == "COMPLETED":
+                    rbac_findings_list = json.loads(rbac_metrics["findings"])
+                    for rf in rbac_findings_list:
+                        db_report = Report(
+                            title=rf["title"],
+                            summary=rf["description"],
+                            findings=rf,
+                            severity=rf["severity"],
+                            project_id=project_id,
+                            audit_run_id=run_id
+                        )
+                        self.db.add(db_report)
+                    self.db.commit()
+                
+                await log_step("security", 74, f"RBAC assessment complete. Status: {rbac_metrics['status']}. Overall score: {rbac_metrics['overall_score']:.1f}%")
+            except Exception as rbac_err:
+                await log_step("security", 74, f"RBAC boundary assessment failed: {str(rbac_err)}.", is_error=True)
+
 
             # ── Step 4: Advanced Security Scan ──────────────────────────────
             await log_step("security", 75, "Running static security engine and vulnerability checks...")

@@ -10,5 +10,6 @@ from app.models.github_analysis import GithubAnalysis  # noqa: F401
 from app.models.generated_report import GeneratedReport  # noqa: F401
 from app.models.refresh_token import RefreshToken  # noqa: F401
 from app.models.evidence import Evidence  # noqa: F401
+from app.models.rbac_result import RBACAuditResult  # noqa: F401
 
 

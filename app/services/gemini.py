@@ -19,6 +19,8 @@ from app.schemas.github import GithubAnalysisResultSchema
 from app.schemas.browser_audit import BrowserAuditResponse
 from app.schemas.requirement_matching import RequirementMatchingResult
 from app.schemas.report_generation import StudentReportSchema, CompanyReportSchema
+from app.schemas.rbac import RoleDiscoveryResult
+
 
 # Wrapper schema for Gemini multi-report generation
 class GeminiGeneratedReportWrapper(BaseModel):
@@ -205,6 +207,21 @@ PRD DOCUMENT:
 
 {document_text}
 """
+
+ROLE_DISCOVERY_SYSTEM_INSTRUCTION = """You are an expert security auditor and penetration tester.
+Your task is to analyze the HTML source code, form elements, buttons, and links of an audited project's landing/login pages to identify any implied user roles (e.g., Admin, Moderator, Staff, Student, Vendor, Guest).
+You MUST return valid JSON that conforms exactly to the schema provided. Do not include any text outside the JSON object.
+"""
+
+ROLE_DISCOVERY_PROMPT = """Analyze the following page structure, links, and forms from the audited application:
+
+Page Title/URL: {url}
+HTML Snippet / Extracted Elements:
+{html_content}
+
+Identify all user roles that this application supports, their associated login URLs, target dashboard paths (if discernible from links or form action routes), and specify a confidence score (0.0 to 1.0) and description of the evidence.
+"""
+
 
 
 from fastapi import HTTPException, status
@@ -674,3 +691,61 @@ class GeminiService:
                 text = text.rstrip()[:-3]
 
         return text.strip()
+
+    def discover_roles(self, url: str, html_content: str) -> RoleDiscoveryResult:
+        """
+        Analyze page structure/HTML to discover roles and credentials paths using Gemini.
+        """
+        # Truncate html if too long
+        if len(html_content) > 100_000:
+            html_content = html_content[:100_000]
+
+        prompt = ROLE_DISCOVERY_PROMPT.format(url=url, html_content=html_content)
+        logger.info("Sending role discovery request to Gemini — %d chars", len(prompt))
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=ROLE_DISCOVERY_SYSTEM_INSTRUCTION,
+                    response_mime_type="application/json",
+                    response_schema=RoleDiscoveryResult,
+                    temperature=0.1,
+                ),
+            )
+
+            if not response.text:
+                raise GeminiError("Gemini returned an empty response.")
+            
+            logger.debug("Raw Gemini response (role discovery): %s", response.text[:500])
+
+        except Exception as e:
+            if isinstance(e, GeminiError):
+                raise
+            raise GeminiError(f"Gemini API call for role discovery failed: {str(e)}")
+
+        try:
+            if hasattr(response, "parsed") and response.parsed is not None:
+                return response.parsed
+        except Exception as e:
+            logger.warning("Failed to access response.parsed directly for role discovery: %s. Falling back to manual JSON parsing.", str(e))
+
+        return self._parse_role_discovery_response(response.text)
+
+    def _parse_role_discovery_response(self, raw_response: str) -> RoleDiscoveryResult:
+        cleaned = self._clean_json_response(raw_response)
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse Gemini response as JSON for role discovery: %s", str(e))
+            raise GeminiError(f"Gemini returned invalid JSON for role discovery: {str(e)}")
+
+        try:
+            result = RoleDiscoveryResult.model_validate(data)
+        except Exception as e:
+            logger.error("Pydantic validation failed for role discovery: %s", str(e))
+            raise GeminiError(f"Gemini response did not match expected RoleDiscoveryResult schema: {str(e)}")
+
+        return result
+

@@ -45,9 +45,13 @@ class ProjectService:
             repository_url=data.repository_url,
             prd_url=data.prd_url,
             deployment_url=data.deployment_url,
+            rbac_enabled=data.rbac_enabled or False,
+            admin_url=data.admin_url,
+            user_url=data.user_url,
             owner_id=owner_id,
         )
         return self.project_repo.create(project)
+
 
     def update_project(
         self, project_id: str, data: ProjectUpdate, current_user: User

@@ -51,8 +51,21 @@ def init_db() -> None:
             if "deployment_url" not in columns:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN deployment_url VARCHAR(512)"))
                 conn.commit()
+            if "rbac_enabled" not in columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN rbac_enabled BOOLEAN DEFAULT 0"))
+                conn.commit()
+            if "admin_url" not in columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN admin_url VARCHAR(512)"))
+                conn.commit()
+            if "user_url" not in columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN user_url VARCHAR(512)"))
+                conn.commit()
+            if "secret_reference" not in columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN secret_reference VARCHAR(512)"))
+                conn.commit()
         except Exception:
             pass
+
 
         # Update users table
         try:
