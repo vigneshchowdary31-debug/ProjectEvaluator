@@ -399,14 +399,24 @@ export default function ProjectDetail() {
                 </div>
 
                 {e.screenshot_url ? (
-                  <a 
-                    href={e.screenshot_url} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="w-full py-2 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/10 text-indigo-400 font-extrabold text-[10px] uppercase rounded-lg tracking-wider text-center transition-all"
-                  >
-                    View Screenshot
-                  </a>
+                  <div className="space-y-2">
+                    <div className="aspect-video w-full rounded-lg overflow-hidden border border-white/5 bg-neutral-950">
+                      <img 
+                        src={e.screenshot_url} 
+                        alt="Evidence Screenshot" 
+                        className="w-full h-full object-cover hover:scale-105 transition-all duration-300"
+                        onError={(el) => { el.target.style.display = 'none'; }}
+                      />
+                    </div>
+                    <a 
+                      href={e.screenshot_url} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="w-full block py-2 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/10 text-indigo-400 font-extrabold text-[10px] uppercase rounded-lg tracking-wider text-center transition-all"
+                    >
+                      View Fullsize
+                    </a>
+                  </div>
                 ) : e.details ? (
                   <div className="bg-[#0c0c0e] p-2 border border-white/5 rounded-lg text-[10px] text-gray-500 max-h-24 overflow-y-auto font-mono whitespace-pre-wrap">
                     {e.details}

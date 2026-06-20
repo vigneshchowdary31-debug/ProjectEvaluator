@@ -130,7 +130,7 @@ class BrowserAuditService:
                             drive_url = self.drive_service.upload_screenshot(desktop_filepath, desktop_filename, drive_folder_id)
                             page_result.desktop_screenshot_url = drive_url
                         else:
-                            page_result.desktop_screenshot_url = f"/screenshots/{desktop_filename}"
+                            page_result.desktop_screenshot_url = f"/api/v1/screenshots/{desktop_filename}"
                     except Exception as se:
                         logger.error("Failed to capture desktop screenshot: %s", str(se))
                         errors_list.append(f"Desktop screenshot failed on {current_url}: {str(se)}")
@@ -228,7 +228,7 @@ class BrowserAuditService:
 
             if drive_folder_id:
                 return self.drive_service.upload_screenshot(mobile_filepath, mobile_filename, drive_folder_id)
-            return f"/screenshots/{mobile_filename}"
+            return f"/api/v1/screenshots/{mobile_filename}"
         except Exception as e:
             logger.warning("Mobile emulation failed for %s: %s", url, str(e))
             return None

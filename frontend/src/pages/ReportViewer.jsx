@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   ArrowLeft, ShieldAlert, CheckCircle, AlertTriangle, XCircle, 
-  BookOpen, Building2, Code, GraduationCap, Percent, HelpCircle 
+  BookOpen, Building2, Code, GraduationCap, Percent, HelpCircle,
+  Printer, Download
 } from 'lucide-react';
 import api from '../api';
 
@@ -66,12 +67,26 @@ export default function ReportViewer() {
     verdictColor = 'text-rose-400 bg-rose-500/10 border-rose-500/20 animate-pulse';
   }
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleDownloadJson = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(report, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `Audit_Report_${report.id}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
   return (
     <div className="space-y-8">
       {/* Back button & tab selector */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-6">
         <div className="flex items-center gap-3">
-          <Link to={`/project/${report.project_id}`} className="p-2 border border-white/5 bg-white/5 text-gray-400 hover:text-white rounded-xl transition-all">
+          <Link to={`/project/${report.project_id}`} className="p-2 border border-white/5 bg-white/5 text-gray-400 hover:text-white rounded-xl transition-all back-btn">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
@@ -80,30 +95,53 @@ export default function ReportViewer() {
           </div>
         </div>
 
-        {/* Audience tab toggle */}
-        <div className="bg-[#0f0f13] border border-white/5 p-1 rounded-xl flex items-center gap-1 self-start md:self-auto">
-          <button 
-            onClick={() => setActiveTab('student')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
-              activeTab === 'student' 
-                ? 'bg-indigo-600 text-white shadow-lg' 
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            Student View
-          </button>
-          <button 
-            onClick={() => setActiveTab('company')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
-              activeTab === 'company' 
-                ? 'bg-indigo-600 text-white shadow-lg' 
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            Company View
-          </button>
+        {/* Actions & Audience tab toggle */}
+        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto tab-controls">
+          {/* Download Options */}
+          <div className="bg-[#0f0f13] border border-white/5 p-1 rounded-xl flex items-center gap-1">
+            <button 
+              onClick={handlePrint}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+              title="Print to PDF"
+            >
+              <Printer className="w-4 h-4" />
+              PDF
+            </button>
+            <button 
+              onClick={handleDownloadJson}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+              title="Download JSON"
+            >
+              <Download className="w-4 h-4" />
+              JSON
+            </button>
+          </div>
+
+          {/* Audience tab toggle */}
+          <div className="bg-[#0f0f13] border border-white/5 p-1 rounded-xl flex items-center gap-1">
+            <button 
+              onClick={() => setActiveTab('student')}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
+                activeTab === 'student' 
+                  ? 'bg-indigo-600 text-white shadow-lg' 
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <GraduationCap className="w-4 h-4" />
+              Student View
+            </button>
+            <button 
+              onClick={() => setActiveTab('company')}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
+                activeTab === 'company' 
+                  ? 'bg-indigo-600 text-white shadow-lg' 
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              Company View
+            </button>
+          </div>
         </div>
       </div>
 

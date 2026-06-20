@@ -143,6 +143,14 @@ app.include_router(settings_router.router)
 
 
 
+# ── Static File Screenshots Hosting ──────────────────────────────────────────
+from fastapi.staticfiles import StaticFiles
+import os
+
+os.makedirs("screenshots", exist_ok=True)
+app.mount("/api/v1/screenshots", StaticFiles(directory="screenshots"), name="screenshots")
+
+
 # ── WebSocket Live Audit Streaming ──────────────────────────────────────────
 from fastapi import WebSocket, WebSocketDisconnect
 from app.utils.ws_manager import ws_manager

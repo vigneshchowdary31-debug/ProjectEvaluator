@@ -58,3 +58,31 @@
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+/* Print CSS Stylesheet */
+@media print {
+  body {
+    background-color: white !important;
+    background: white !important;
+    color: black !important;
+  }
+  header, footer, nav, button, a, .back-btn, .tab-controls {
+    display: none !important;
+  }
+  .glass-card {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    border: none !important;
+    color: black !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  h1, h2, h3, h4, p, span, li, td, th {
+    color: black !important;
+  }
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
