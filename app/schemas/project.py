@@ -23,6 +23,8 @@ class ProjectCreate(BaseModel):
     rbac_enabled: Optional[bool] = False
     admin_url: Optional[str] = None
     user_url: Optional[str] = None
+    auth_required: Optional[bool] = False
+    login_url: Optional[str] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -35,6 +37,8 @@ class ProjectUpdate(BaseModel):
     rbac_enabled: Optional[bool] = None
     admin_url: Optional[str] = None
     user_url: Optional[str] = None
+    auth_required: Optional[bool] = None
+    login_url: Optional[str] = None
 
 
 class ProjectResponse(BaseModel):
@@ -49,6 +53,8 @@ class ProjectResponse(BaseModel):
     rbac_enabled: bool
     admin_url: Optional[str]
     user_url: Optional[str]
+    auth_required: bool
+    login_url: Optional[str]
     created_at: datetime
     updated_at: datetime
 

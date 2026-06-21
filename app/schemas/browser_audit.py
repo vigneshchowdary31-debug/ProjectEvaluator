@@ -32,6 +32,13 @@ class BrowserAuditRequest(BaseModel):
     user_url: Optional[str] = Field(None, description="Regular user dashboard path")
     user_email: Optional[str] = Field(None, description="Regular user email")
     user_password: Optional[str] = Field(None, description="Regular user password")
+    auth_required: bool = Field(
+        default=False,
+        description="Enable authenticated crawling and security testing"
+    )
+    login_url: Optional[str] = Field(None, description="Audited login path/URL")
+    auth_email: Optional[str] = Field(None, description="Authentication email credentials")
+    auth_password: Optional[str] = Field(None, description="Authentication password credentials")
 
 
 class FormFieldTestResult(BaseModel):
@@ -71,4 +78,7 @@ class BrowserAuditResponse(BaseModel):
     total_pages_visited: int = Field(..., description="Total number of pages successfully crawled")
     drive_folder_url: Optional[str] = Field(None, description="Google Drive directory URL containing all screenshots")
     errors: List[str] = Field(default_factory=list, description="Any non-fatal error warnings (e.g. Google Drive uploads)")
+    auth_status: Optional[str] = Field(default="UNTESTED", description="Status of the authenticated audit testing")
+    authenticated_pages_audited: List[PageAuditResult] = Field(default_factory=list, description="List of pages audited behind authentication")
+    protected_routes_discovered: List[str] = Field(default_factory=list, description="List of discovered protected routes")
     created_at: str = Field(..., description="ISO 8601 creation timestamp")

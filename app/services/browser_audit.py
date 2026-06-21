@@ -6,6 +6,7 @@ and checking authorization limits.
 """
 
 import os
+import json
 import uuid
 import logging
 import asyncio
@@ -24,6 +25,7 @@ from app.schemas.browser_audit import (
     FormFieldTestResult,
 )
 from app.services.google_drive import GoogleDriveService
+from app.services.auth_audit import AuthenticationAuditService
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +40,9 @@ class BrowserAuditService:
 
     def __init__(self):
         self.drive_service = GoogleDriveService()
+        self.auth_audit_service = AuthenticationAuditService()
         os.makedirs(SCREENSHOT_DIR, exist_ok=True)
-        for role in ("Guest", "User", "Admin"):
+        for role in ("Guest", "User", "Admin", "Authenticated"):
             os.makedirs(os.path.join(SCREENSHOT_DIR, role), exist_ok=True)
 
     async def audit(self, request: BrowserAuditRequest) -> BrowserAuditResponse:
@@ -64,6 +67,9 @@ class BrowserAuditService:
         pages_audited: List[PageAuditResult] = []
         errors_list: List[str] = []
         discovered_internal_urls: Set[str] = {target_url}
+        auth_status = "UNTESTED"
+        authenticated_pages_audited = []
+        protected_routes_discovered = []
 
         # Google Drive setup
         drive_folder_id = None
@@ -102,6 +108,37 @@ class BrowserAuditService:
                     pages_audited.append(page_result)
 
                 await desktop_context.close()
+
+                # ── 1.5. AUTHENTICATED AUDIT ─────────────────────────────────
+                auth_required = getattr(request, 'auth_required', False)
+                if auth_required and request.auth_email and request.auth_password:
+                    logger.info("Starting Authenticated Audit session")
+                    try:
+                        auth_result = await self.auth_audit_service.run_auth_audit(
+                            browser=browser,
+                            target_url=target_url,
+                            login_url=getattr(request, 'login_url', None),
+                            email=request.auth_email,
+                            password=request.auth_password,
+                            max_pages=request.max_pages,
+                            audit_id=audit_id,
+                            drive_folder_id=drive_folder_id,
+                        )
+                        auth_status = auth_result.get("status", "FAILED")
+                        authenticated_pages_audited = auth_result.get("authenticated_pages_audited", [])
+                        # Merge authenticated pages into the main pages_audited list
+                        pages_audited.extend(authenticated_pages_audited)
+                        # Extract discovered route URLs
+                        try:
+                            routes_json = json.loads(auth_result.get("protected_routes", "[]"))
+                            protected_routes_discovered = [r.get("route", "") for r in routes_json if isinstance(r, dict)]
+                        except Exception:
+                            protected_routes_discovered = []
+                        logger.info("Authenticated Audit complete. Status: %s, Pages: %d", auth_status, len(authenticated_pages_audited))
+                    except Exception as auth_err:
+                        logger.error("Authenticated Audit failed: %s", str(auth_err))
+                        errors_list.append(f"Authenticated audit failed: {str(auth_err)}")
+                        auth_status = "FAILED"
 
                 # ── 2. RBAC MULTI-ROLE CRAWL ──────────────────────────────────
                 if rbac_enabled:
@@ -185,6 +222,9 @@ class BrowserAuditService:
             total_pages_visited=len(pages_audited),
             drive_folder_url=drive_folder_url,
             errors=errors_list,
+            auth_status=auth_status,
+            authenticated_pages_audited=authenticated_pages_audited,
+            protected_routes_discovered=protected_routes_discovered,
             created_at=datetime.now(timezone.utc).isoformat()
         )
 

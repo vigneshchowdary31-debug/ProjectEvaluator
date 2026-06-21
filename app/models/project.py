@@ -31,6 +31,8 @@ class Project(Base):
     rbac_enabled: Mapped[bool] = mapped_column(default=False)
     admin_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     user_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    auth_required: Mapped[bool] = mapped_column(default=False)
+    login_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     secret_reference: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     owner_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False
@@ -49,6 +51,18 @@ class Project(Base):
     )
     audit_runs: Mapped[list["AuditRun"]] = relationship(  # noqa: F821
         "AuditRun", back_populates="project", cascade="all, delete-orphan"
+    )
+    rbac_results: Mapped[list["RBACAuditResult"]] = relationship(  # noqa: F821
+        "RBACAuditResult", back_populates="project", cascade="all, delete-orphan"
+    )
+    auth_results: Mapped[list["AuthAuditResult"]] = relationship(  # noqa: F821
+        "AuthAuditResult", back_populates="project", cascade="all, delete-orphan"
+    )
+    evidences: Mapped[list["Evidence"]] = relationship(  # noqa: F821
+        "Evidence", back_populates="project", cascade="all, delete-orphan"
+    )
+    generated_reports: Mapped[list["GeneratedReport"]] = relationship(  # noqa: F821
+        "GeneratedReport", back_populates="project", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

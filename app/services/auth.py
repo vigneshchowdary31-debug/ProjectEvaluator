@@ -72,7 +72,10 @@ class AuthService:
 
         # ── Expiry detection ─────────────────────────────────────────
         now = datetime.now(timezone.utc)
-        if token_record.expires_at < now:
+        expires_at = token_record.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < now:
             token_record.is_revoked = True
             self.db.commit()
             raise UnauthorizedException(detail="Refresh token expired")

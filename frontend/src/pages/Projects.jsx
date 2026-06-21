@@ -29,6 +29,11 @@ export default function Projects() {
     user_password: '',
     has_admin_credentials: false,
     has_user_credentials: false,
+    auth_required: false,
+    login_url: '',
+    auth_email: '',
+    auth_password: '',
+    has_auth_credentials: false,
   });
 
   const fetchProjects = async () => {
@@ -102,6 +107,11 @@ export default function Projects() {
       user_password: '',
       has_admin_credentials: false,
       has_user_credentials: false,
+      auth_required: false,
+      login_url: '',
+      auth_email: '',
+      auth_password: '',
+      has_auth_credentials: false,
     });
     setModalOpen(true);
   };
@@ -123,6 +133,18 @@ export default function Projects() {
       console.error('Failed to fetch RBAC status', e);
     }
 
+    let auth_required = p.auth_required || false;
+    let has_auth = false;
+    try {
+      const authStatusRes = await api.get(API_PATHS.AUTH_STATUS(p.id));
+      if (authStatusRes.data) {
+        auth_required = authStatusRes.data.auth_required;
+        has_auth = authStatusRes.data.has_credentials;
+      }
+    } catch (e) {
+      console.error('Failed to fetch Auth status', e);
+    }
+
     setFormData({
       name: p.name,
       description: p.description || '',
@@ -138,6 +160,11 @@ export default function Projects() {
       user_password: '',
       has_admin_credentials: has_admin,
       has_user_credentials: has_user,
+      auth_required: auth_required,
+      login_url: p.login_url || '',
+      auth_email: '',
+      auth_password: '',
+      has_auth_credentials: has_auth,
     });
     setModalOpen(true);
   };
@@ -154,6 +181,8 @@ export default function Projects() {
         rbac_enabled: formData.rbac_enabled,
         admin_url: formData.admin_url || null,
         user_url: formData.user_url || null,
+        auth_required: formData.auth_required,
+        login_url: formData.login_url || null,
       };
 
       let projectId = '';
@@ -177,6 +206,17 @@ export default function Projects() {
           user_password: formData.user_password || null,
         };
         await api.post(`/api/v1/projects/${projectId}/rbac/credentials`, credsPayload);
+      }
+
+      // If Auth is enabled, save/update the auth credentials
+      if (formData.auth_required) {
+        const authCredsPayload = {
+          auth_required: true,
+          login_url: formData.login_url || null,
+          email: formData.auth_email || null,
+          password: formData.auth_password || null,
+        };
+        await api.post(API_PATHS.AUTH_CREDENTIALS(projectId), authCredsPayload);
       }
 
       setModalOpen(false);
@@ -498,6 +538,57 @@ export default function Projects() {
                           onChange={(e) => setFormData({ ...formData, user_password: e.target.value })}
                           className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
                           placeholder={formData.has_user_credentials ? "••••••••" : "Password123"}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Authentication Audit Toggle */}
+                <div className="flex items-center justify-between p-3.5 bg-white/5 border border-white/5 rounded-xl">
+                  <div>
+                    <span className="text-xs font-bold text-gray-300 uppercase tracking-wider block">Enable Authentication Audit</span>
+                    <span className="text-[10px] text-gray-500">Login, test session quality, and crawl pages behind authentication.</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={formData.auth_required}
+                    onChange={(e) => setFormData({ ...formData, auth_required: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 border-white/10 rounded bg-[#0a0a0d] focus:ring-indigo-500"
+                  />
+                </div>
+
+                {formData.auth_required && (
+                  <div className="space-y-3.5 p-4 bg-white/5 border border-white/5 rounded-xl">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Login Page URL</label>
+                      <input
+                        type="text"
+                        value={formData.login_url}
+                        onChange={(e) => setFormData({ ...formData, login_url: e.target.value })}
+                        className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
+                        placeholder="E.g., https://myapp.com/login (auto-detected if empty)"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Login Email / Username</label>
+                        <input
+                          type="text"
+                          value={formData.auth_email}
+                          onChange={(e) => setFormData({ ...formData, auth_email: e.target.value })}
+                          className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
+                          placeholder={formData.has_auth_credentials ? "•••••••• (Saved)" : "user@example.com"}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Login Password</label>
+                        <input
+                          type="password"
+                          value={formData.auth_password}
+                          onChange={(e) => setFormData({ ...formData, auth_password: e.target.value })}
+                          className="w-full bg-[#0a0a0d] border border-white/5 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
+                          placeholder={formData.has_auth_credentials ? "••••••••" : "Password123"}
                         />
                       </div>
                     </div>

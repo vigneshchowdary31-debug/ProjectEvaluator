@@ -38,6 +38,7 @@ from app.services.google_drive import GoogleDriveService
 from app.services.security_engine import AdvancedSecurityEngine
 from app.services.readiness_evaluator import ProductionReadinessEvaluator
 from app.models.rbac_result import RBACAuditResult
+from app.models.auth_audit_result import AuthAuditResult
 from app.services.secret_manager import SecretManagerService
 from app.services.rbac_security import RBACSecurityEngine
 
@@ -242,6 +243,7 @@ class OrchestratorService:
 
             # ── Step 3: Headless Playwright crawling & mobile testing ───────
             has_credentials = False
+            auth_score_value = 0.0
             if project.deployment_url:
                 await log_step("browser", 55, "Launching headless Playwright crawler on deployment URL...")
                 try:
@@ -260,18 +262,31 @@ class OrchestratorService:
                     user_password = None
                     rbac_enabled = bool(project.rbac_enabled)
 
-                    if rbac_enabled and project.secret_reference:
+                    # Load auth credentials for authenticated audit
+                    auth_required = bool(getattr(project, 'auth_required', False))
+                    auth_email = None
+                    auth_password = None
+                    login_url = getattr(project, 'login_url', None)
+
+                    if project.secret_reference:
                         try:
                             creds = self.secret_manager.retrieve_credentials(project.secret_reference)
                             if creds:
-                                admin_email = creds.get("admin", {}).get("email")
-                                admin_password = creds.get("admin", {}).get("password")
-                                user_email = creds.get("user", {}).get("email")
-                                user_password = creds.get("user", {}).get("password")
-                                if (admin_email and admin_password) or (user_email and user_password):
-                                    has_credentials = True
+                                # RBAC credentials
+                                if rbac_enabled:
+                                    admin_email = creds.get("admin", {}).get("email")
+                                    admin_password = creds.get("admin", {}).get("password")
+                                    user_email = creds.get("user", {}).get("email")
+                                    user_password = creds.get("user", {}).get("password")
+                                    if (admin_email and admin_password) or (user_email and user_password):
+                                        has_credentials = True
+                                # Auth credentials
+                                if auth_required:
+                                    auth_creds = creds.get("auth", {})
+                                    auth_email = auth_creds.get("email")
+                                    auth_password = auth_creds.get("password")
                         except Exception as cred_err:
-                            await log_step("browser", 58, f"Failed to retrieve RBAC credentials: {str(cred_err)}. Proceeding with guest-only audit.")
+                            await log_step("browser", 58, f"Failed to retrieve credentials: {str(cred_err)}. Proceeding with guest-only audit.")
 
                     browser_result = await self.browser_service.audit(BrowserAuditRequest(
                         url=project.deployment_url,
@@ -283,13 +298,41 @@ class OrchestratorService:
                         admin_password=admin_password,
                         user_url=project.user_url,
                         user_email=user_email,
-                        user_password=user_password
+                        user_password=user_password,
+                        auth_required=auth_required,
+                        login_url=login_url,
+                        auth_email=auth_email,
+                        auth_password=auth_password
                     ))
                     
                     # Restore drive configuration
                     self.browser_service.drive_service.enabled = old_enabled
 
                     await log_step("browser", 70, f"Crawler execution complete. Visited {len(browser_result.pages_audited)} link viewports.")
+
+                    # ── Step 3.25: Save Authenticated Audit Results ──────────────
+                    if auth_required and browser_result.auth_status != "UNTESTED":
+                        await log_step("auth", 71, f"Saving authenticated audit results. Status: {browser_result.auth_status}")
+                        try:
+                            # We need to retrieve the full auth_result from the browser service
+                            # The browser_result carries summary fields; re-derive detailed results
+                            auth_audit_record = AuthAuditResult(
+                                audit_run_id=run_id,
+                                project_id=project_id,
+                                status=browser_result.auth_status or "UNTESTED",
+                                login_success=browser_result.auth_status in ("SUCCESS", "PARTIAL"),
+                                protected_routes_found=len(browser_result.protected_routes_discovered),
+                                protected_routes_audited=len(browser_result.authenticated_pages_audited),
+                                login_url_used=login_url,
+                                protected_routes=json.dumps([{"route": r} for r in browser_result.protected_routes_discovered]),
+                                created_at=datetime.now(timezone.utc)
+                            )
+                            db.add(auth_audit_record)
+                            db.commit()
+                            auth_score_value = 75.0 if browser_result.auth_status == "SUCCESS" else (50.0 if browser_result.auth_status == "PARTIAL" else 0.0)
+                        except Exception as auth_save_err:
+                            logger.error("Failed to save AuthAuditResult: %s", str(auth_save_err))
+
                 except Exception as e:
                     await log_step("browser", 70, f"Crawler failed: {str(e)}.", is_error=True)
             else:

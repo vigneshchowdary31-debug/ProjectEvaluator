@@ -107,7 +107,7 @@ class SecretManagerService:
         except Exception as e:
             logger.error("Failed to encrypt/write local secrets locker: %s", str(e))
 
-    def save_credentials(self, project_id: str, admin_creds: dict, user_creds: dict) -> str:
+    def save_credentials(self, project_id: str, admin_creds: dict, user_creds: dict, auth_creds: Optional[dict] = None) -> str:
         """
         Encrypt and save project credentials securely.
         Returns a secret reference UUID.
@@ -118,6 +118,8 @@ class SecretManagerService:
             "admin": admin_creds,
             "user": user_creds
         }
+        if auth_creds is not None:
+            payload["auth"] = auth_creds
         payload_str = json.dumps(payload)
 
         # 1. Attempt Google Secret Manager

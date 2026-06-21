@@ -40,8 +40,8 @@ class Evidence(Base):
     )
 
     # Relationships
-    project: Mapped["Project"] = relationship("Project")  # noqa: F821
-    audit_run: Mapped["AuditRun"] = relationship("AuditRun")  # noqa: F821
+    project: Mapped["Project"] = relationship("Project", back_populates="evidences")  # noqa: F821
+    audit_run: Mapped["AuditRun"] = relationship("AuditRun", back_populates="evidences")  # noqa: F821
 
     def __repr__(self) -> str:
         return f"<Evidence {self.evidence_type} for project {self.project_id}>"

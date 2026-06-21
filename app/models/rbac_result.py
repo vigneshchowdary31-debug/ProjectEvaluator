@@ -47,8 +47,8 @@ class RBACAuditResult(Base):
     )
 
     # Relationships
-    project: Mapped["Project"] = relationship("Project")  # noqa: F821
-    audit_run: Mapped["AuditRun"] = relationship("AuditRun")  # noqa: F821
+    project: Mapped["Project"] = relationship("Project", back_populates="rbac_results")  # noqa: F821
+    audit_run: Mapped["AuditRun"] = relationship("AuditRun", back_populates="rbac_results")  # noqa: F821
 
     def __repr__(self) -> str:
         return f"<RBACAuditResult {self.id} for audit_run {self.audit_run_id}>"

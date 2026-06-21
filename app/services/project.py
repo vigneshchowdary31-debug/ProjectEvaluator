@@ -48,6 +48,8 @@ class ProjectService:
             rbac_enabled=data.rbac_enabled or False,
             admin_url=data.admin_url,
             user_url=data.user_url,
+            auth_required=data.auth_required or False,
+            login_url=data.login_url,
             owner_id=owner_id,
         )
         return self.project_repo.create(project)
@@ -67,6 +69,18 @@ class ProjectService:
     def delete_project(self, project_id: str, current_user: User) -> None:
         project = self.get_project(project_id)
         self._check_ownership(project, current_user)
+        
+        if project.secret_reference:
+            try:
+                from app.services.secret_manager import SecretManagerService
+                sm = SecretManagerService()
+                sm.delete_credentials(project.secret_reference)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Failed to delete credentials for project {project_id}: {e}"
+                )
+
         self.project_repo.delete(project)
 
     @staticmethod

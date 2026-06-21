@@ -121,12 +121,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ── Register routers ────────────────────────────────────────────────────────
-from app.routers import auth, users, projects, reports, audit_runs, prd_analysis, github_analysis, browser_audit, requirement_matching, report_generation, evidence, analytics, settings as settings_router, rbac  # noqa: E402
+from app.routers import auth, users, projects, reports, audit_runs, prd_analysis, github_analysis, browser_audit, requirement_matching, report_generation, evidence, analytics, settings as settings_router, rbac, auth_audit  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(projects.router)
 app.include_router(rbac.router)
+app.include_router(auth_audit.router)
 app.include_router(report_generation.router)  # Registered first to prevent shadowing of /{report_id}
 app.include_router(reports.router)
 app.include_router(audit_runs.router)

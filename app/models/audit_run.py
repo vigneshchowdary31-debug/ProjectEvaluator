@@ -52,7 +52,16 @@ class AuditRun(Base):
         "User", back_populates="triggered_runs"
     )
     reports: Mapped[list["Report"]] = relationship(  # noqa: F821
-        "Report", back_populates="audit_run"
+        "Report", back_populates="audit_run", cascade="all, delete-orphan"
+    )
+    rbac_results: Mapped[list["RBACAuditResult"]] = relationship(  # noqa: F821
+        "RBACAuditResult", back_populates="audit_run", cascade="all, delete-orphan"
+    )
+    auth_results: Mapped[list["AuthAuditResult"]] = relationship(  # noqa: F821
+        "AuthAuditResult", back_populates="audit_run", cascade="all, delete-orphan"
+    )
+    evidences: Mapped[list["Evidence"]] = relationship(  # noqa: F821
+        "Evidence", back_populates="audit_run", cascade="all, delete-orphan"
     )
 
     # ── Valid status transitions ─────────────────────────────────────

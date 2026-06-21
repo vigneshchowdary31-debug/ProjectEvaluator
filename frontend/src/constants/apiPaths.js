@@ -31,4 +31,11 @@ export const API_PATHS = {
 
   // Settings
   SETTINGS_STATUS: `${API_BASE}/settings/status`,
+
+  // Authenticated Audit
+  AUTH_CREDENTIALS: (id) => `${API_BASE}/projects/${id}/auth/credentials`,
+  AUTH_STATUS: (id) => `${API_BASE}/projects/${id}/auth/status`,
+  AUTH_FINDINGS: (id) => `${API_BASE}/projects/${id}/auth/findings`,
+  AUTH_ROUTES: (id) => `${API_BASE}/projects/${id}/auth/routes`,
+  AUTH_SCORES: (id) => `${API_BASE}/projects/${id}/auth/scores`,
 };

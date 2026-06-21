@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   FolderKanban, Play, Github, FileText, Globe, RefreshCw, 
-  Terminal, History, ShieldAlert, Award, FileCode, CheckCircle, XCircle 
+  Terminal, History, ShieldAlert, Award, FileCode, CheckCircle, XCircle, Lock 
 } from 'lucide-react';
 import api from '../api';
 import { API_PATHS } from '../constants/apiPaths';
@@ -23,6 +23,12 @@ export default function ProjectDetail() {
   const [rbacCoverage, setRbacCoverage] = useState([]);
   const [rbacViolations, setRbacViolations] = useState([]);
   const [selectedLockerRole, setSelectedLockerRole] = useState('Guest');
+
+  // Auth audit state
+  const [authStatus, setAuthStatus] = useState(null);
+  const [authScores, setAuthScores] = useState(null);
+  const [authFindings, setAuthFindings] = useState([]);
+  const [authRoutes, setAuthRoutes] = useState([]);
 
   // Audit Execution & WS console state
   const [auditing, setAuditing] = useState(false);
@@ -62,6 +68,24 @@ export default function ProjectDetail() {
         }
       } catch (rbacErr) {
         console.error('Failed to load RBAC results', rbacErr);
+      }
+
+      // Fetch Auth audit data
+      try {
+        const authStatusRes = await api.get(API_PATHS.AUTH_STATUS(id));
+        setAuthStatus(authStatusRes.data);
+        if (authStatusRes.data && authStatusRes.data.auth_required) {
+          const [authScoresRes, authFindingsRes, authRoutesRes] = await Promise.all([
+            api.get(API_PATHS.AUTH_SCORES(id)),
+            api.get(API_PATHS.AUTH_FINDINGS(id)),
+            api.get(API_PATHS.AUTH_ROUTES(id)),
+          ]);
+          setAuthScores(authScoresRes.data);
+          setAuthFindings(authFindingsRes.data.findings || []);
+          setAuthRoutes(authRoutesRes.data.protected_routes || []);
+        }
+      } catch (authErr) {
+        console.error('Failed to load Auth results', authErr);
       }
     } catch (err) {
       console.error(err);
@@ -353,6 +377,17 @@ export default function ProjectDetail() {
         >
           <ShieldAlert className="w-4 h-4 text-indigo-500" />
           Security & RBAC Matrix
+        </button>
+        <button
+          onClick={() => setActiveTab('auth')}
+          className={`pb-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 flex items-center gap-2 ${
+            activeTab === 'auth' 
+              ? 'border-indigo-500 text-white' 
+              : 'border-transparent text-gray-500 hover:text-white'
+          }`}
+        >
+          <Lock className="w-4 h-4 text-indigo-500" />
+          Authentication
         </button>
       </div>
 
@@ -684,6 +719,113 @@ export default function ProjectDetail() {
                 )}
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* Authentication Tab */}
+      {activeTab === 'auth' && (
+        <div className="space-y-6">
+          {/* Auth Status Overview */}
+          <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Lock className="w-4 h-4 text-indigo-500" />
+              Authentication Audit Status
+            </h3>
+            {authStatus ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-white/5 rounded-xl text-center">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Status</span>
+                  <span className={`text-sm font-extrabold ${
+                    authStatus.status === 'SUCCESS' ? 'text-emerald-400' :
+                    authStatus.status === 'PARTIAL' ? 'text-amber-400' :
+                    authStatus.status === 'FAILED' ? 'text-rose-400' : 'text-gray-400'
+                  }`}>{authStatus.status}</span>
+                </div>
+                <div className="p-4 bg-white/5 rounded-xl text-center">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Auth Required</span>
+                  <span className="text-sm font-extrabold text-white">{authStatus.auth_required ? 'Yes' : 'No'}</span>
+                </div>
+                <div className="p-4 bg-white/5 rounded-xl text-center">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Credentials</span>
+                  <span className={`text-sm font-extrabold ${authStatus.has_credentials ? 'text-emerald-400' : 'text-gray-400'}`}>
+                    {authStatus.has_credentials ? 'Configured' : 'Not Set'}
+                  </span>
+                </div>
+                <div className="p-4 bg-white/5 rounded-xl text-center">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Auth Score</span>
+                  <span className="text-sm font-extrabold text-white">{authScores ? `${authScores.auth_score.toFixed(1)}%` : 'N/A'}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-xs">Authentication audit has not been configured for this project.</p>
+            )}
+          </div>
+
+          {/* Protected Routes */}
+          {authRoutes.length > 0 && (
+            <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Discovered Protected Routes</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-white/5">
+                      <th className="text-left py-2 px-3 text-gray-500 uppercase tracking-widest font-bold">Route</th>
+                      <th className="text-left py-2 px-3 text-gray-500 uppercase tracking-widest font-bold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {authRoutes.map((r, i) => (
+                      <tr key={i} className="border-b border-white/5 hover:bg-white/5 transition-all">
+                        <td className="py-2 px-3 text-white font-mono">{r.route}</td>
+                        <td className="py-2 px-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            r.status === 'ACCESSED' ? 'bg-emerald-500/10 text-emerald-400' :
+                            r.status === 'REDIRECTED' ? 'bg-amber-500/10 text-amber-400' :
+                            'bg-rose-500/10 text-rose-400'
+                          }`}>{r.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Auth Findings */}
+          {authFindings.length > 0 && (
+            <div className="glass-card rounded-2xl p-6 border border-white/5 space-y-4">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Authentication Quality Findings</h3>
+              <div className="space-y-3">
+                {authFindings.map((f, i) => (
+                  <div key={i} className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white">{f.title}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        f.severity === 'critical' ? 'bg-rose-500/10 text-rose-400' :
+                        f.severity === 'high' ? 'bg-orange-500/10 text-orange-400' :
+                        f.severity === 'medium' ? 'bg-amber-500/10 text-amber-400' :
+                        'bg-gray-500/10 text-gray-400'
+                      }`}>{f.severity}</span>
+                    </div>
+                    <p className="text-gray-400 text-[11px] leading-relaxed">{f.description}</p>
+                    <p className="text-indigo-400 text-[10px]"><strong>Recommendation:</strong> {f.recommendation}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {(!authStatus || !authStatus.auth_required) && (
+            <div className="glass-card rounded-2xl p-12 border border-white/5 text-center flex flex-col items-center gap-3">
+              <Lock className="w-10 h-10 text-gray-600" />
+              <h3 className="text-base font-bold text-gray-300">Authentication Audit Not Enabled</h3>
+              <p className="text-gray-500 text-xs max-w-md">
+                Enable "Authentication Required" in the project settings and provide login credentials to audit pages behind authentication.
+              </p>
+            </div>
           )}
         </div>
       )}

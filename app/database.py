@@ -2,7 +2,8 @@
 Database engine, session factory, and declarative base.
 """
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from app.config import get_settings
@@ -20,6 +21,13 @@ engine = create_engine(
     connect_args=connect_args,
     echo=settings.DEBUG,
 )
+
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    if settings.DATABASE_URL.startswith("sqlite"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 # ── Session ──────────────────────────────────────────────────────────────────
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -62,6 +70,12 @@ def init_db() -> None:
                 conn.commit()
             if "secret_reference" not in columns:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN secret_reference VARCHAR(512)"))
+                conn.commit()
+            if "auth_required" not in columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN auth_required BOOLEAN DEFAULT 0"))
+                conn.commit()
+            if "login_url" not in columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN login_url VARCHAR(512)"))
                 conn.commit()
         except Exception:
             pass

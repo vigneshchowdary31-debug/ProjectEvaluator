@@ -33,7 +33,7 @@ class GeneratedReport(Base):
     )
 
     # ── Relationships ────────────────────────────────────────────────
-    project: Mapped["Project"] = relationship("Project")  # noqa: F821
+    project: Mapped["Project"] = relationship("Project", back_populates="generated_reports")  # noqa: F821
 
     def __repr__(self) -> str:
         return f"<GeneratedReport {self.id} for project {self.project_id}>"
