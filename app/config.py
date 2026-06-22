@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     # ── CORS ─────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = ["*"]
 
+    # ── Sheets & Audit Queue Automation ──────────────────────────────
+    AUDIT_WORKER_CONCURRENCY: int = 5
+    AUDIT_WORKER_ENABLED: bool = True
+    SHEET_WRITEBACK_ENABLED: bool = True
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

@@ -91,6 +91,22 @@ class OrchestratorService:
         background_tasks.add_task(self._run_audit_async_wrapper, audit_run.id, project_id, user_id)
         return audit_run
 
+    def trigger_audit_direct(self, project_id: str, user_id: str, trigger_reason: str = "manual") -> AuditRun:
+        """Create a pending audit run without queuing it via FastAPI's BackgroundTasks."""
+        project = self.project_repo.get_by_id(project_id)
+        if not project:
+            raise NotFoundException(detail="Project not found")
+
+        audit_run = AuditRun(
+            project_id=project_id,
+            triggered_by=user_id,
+            trigger=trigger_reason,
+            status="pending",
+            config={}
+        )
+        self.audit_run_repo.create(audit_run)
+        return audit_run
+
     def _run_audit_async_wrapper(self, run_id: str, project_id: str, user_id: str):
         """Sync wrapper to run async run_audit_task within FastAPI background worker."""
         loop = asyncio.new_event_loop()

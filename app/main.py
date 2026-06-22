@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 
 # ── Lifespan (startup / shutdown) ────────────────────────────────────────────
+worker = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Run startup tasks before the app begins serving requests."""
@@ -39,9 +42,17 @@ async def lifespan(app: FastAPI):
     # 2. Seed admin user
     _seed_admin_user()
 
+    # 3. Start background audit queue worker
+    global worker
+    from app.services.audit_worker import AuditWorker
+    worker = AuditWorker(SessionLocal)
+    await worker.start()
+
     yield
 
     logger.info("🛑 Shutting down %s", settings.APP_NAME)
+    if worker:
+        await worker.stop()
 
 
 def _seed_admin_user() -> None:
@@ -121,7 +132,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ── Register routers ────────────────────────────────────────────────────────
-from app.routers import auth, users, projects, reports, audit_runs, prd_analysis, github_analysis, browser_audit, requirement_matching, report_generation, evidence, analytics, settings as settings_router, rbac, auth_audit  # noqa: E402
+from app.routers import auth, users, projects, reports, audit_runs, prd_analysis, github_analysis, browser_audit, requirement_matching, report_generation, evidence, analytics, settings as settings_router, rbac, auth_audit, sheets, imports, approvals, queue, portfolio, notifications  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(users.router)
@@ -138,6 +149,14 @@ app.include_router(requirement_matching.router)
 app.include_router(evidence.router)
 app.include_router(analytics.router)
 app.include_router(settings_router.router)
+
+# Google Sheets Intake & Audit Automation Routers
+app.include_router(sheets.router)
+app.include_router(imports.router)
+app.include_router(approvals.router)
+app.include_router(queue.router)
+app.include_router(portfolio.router)
+app.include_router(notifications.router)
 
 
 

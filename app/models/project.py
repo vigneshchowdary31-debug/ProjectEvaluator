@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -37,6 +37,16 @@ class Project(Base):
     owner_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False
     )
+    
+    # Google Sheets Integration Columns
+    student_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    company_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="manual")  # manual | sheet_import
+    sheet_row_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sheet_connection_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("sheet_connections.id", ondelete="SET NULL"), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )
@@ -63,6 +73,20 @@ class Project(Base):
     )
     generated_reports: Mapped[list["GeneratedReport"]] = relationship(  # noqa: F821
         "GeneratedReport", back_populates="project", cascade="all, delete-orphan"
+    )
+    
+    # New relationships
+    sheet_connection: Mapped[Optional["SheetConnection"]] = relationship(  # noqa: F821
+        "SheetConnection", back_populates="projects"
+    )
+    approval: Mapped[Optional["ProjectApproval"]] = relationship(  # noqa: F821
+        "ProjectApproval", back_populates="project", uselist=False, cascade="all, delete-orphan"
+    )
+    sync_histories: Mapped[list["ProjectSyncHistory"]] = relationship(  # noqa: F821
+        "ProjectSyncHistory", back_populates="project", cascade="all, delete-orphan"
+    )
+    queue_items: Mapped[list["AuditQueue"]] = relationship(  # noqa: F821
+        "AuditQueue", back_populates="project", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

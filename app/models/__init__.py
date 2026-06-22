@@ -12,5 +12,13 @@ from app.models.refresh_token import RefreshToken  # noqa: F401
 from app.models.evidence import Evidence  # noqa: F401
 from app.models.rbac_result import RBACAuditResult  # noqa: F401
 from app.models.auth_audit_result import AuthAuditResult  # noqa: F401
+from app.models.sheet_connection import SheetConnection  # noqa: F401
+from app.models.import_job import ImportJob  # noqa: F401
+from app.models.project_sync_history import ProjectSyncHistory  # noqa: F401
+from app.models.project_approval import ProjectApproval  # noqa: F401
+from app.models.audit_queue import AuditQueue  # noqa: F401
+from app.models.company_portfolio import CompanyPortfolio  # noqa: F401
+from app.models.notification import Notification  # noqa: F401
+
 
 

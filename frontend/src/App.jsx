@@ -13,6 +13,10 @@ import Analytics from './pages/Analytics';
 import StudentRankings from './pages/StudentRankings';
 import CompanyDashboard from './pages/CompanyDashboard';
 import SettingsPage from './pages/Settings';
+import SheetsManagement from './pages/SheetsManagement';
+import ApprovalQueue from './pages/ApprovalQueue';
+import AuditQueue from './pages/AuditQueue';
+import PortfolioDashboard from './pages/PortfolioDashboard';
 import api from './api';
 
 // Protected layout wrapper
@@ -47,13 +51,22 @@ function Layout({ children }) {
     navigate('/login');
   };
 
-  const menuItems = [
+  const baseMenuItems = [
     { name: 'Projects', path: '/projects', icon: FolderKanban },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
     { name: 'Rankings', path: '/student-rankings', icon: Trophy },
-    { name: 'Company', path: '/company-dashboard', icon: Landmark },
-    { name: 'Settings', path: '/settings', icon: Settings },
+    { name: 'Portfolio', path: '/portfolio-dashboard', icon: Landmark },
   ];
+
+  const adminMenuItems = [
+    { name: 'Sheets', path: '/sheets-management', icon: FileText },
+    { name: 'Approvals', path: '/approval-queue', icon: ShieldAlert },
+    { name: 'Queue', path: '/audit-queue', icon: LayoutDashboard },
+  ];
+
+  const menuItems = user?.is_admin 
+    ? [...baseMenuItems, ...adminMenuItems, { name: 'Settings', path: '/settings', icon: Settings }]
+    : [...baseMenuItems, { name: 'Settings', path: '/settings', icon: Settings }];
 
   return (
     <div className="min-h-screen bg-[#08080a] flex flex-col">
@@ -180,6 +193,10 @@ export default function App() {
         <Route path="/analytics" element={<PrivateRoute><Analytics /></PrivateRoute>} />
         <Route path="/student-rankings" element={<PrivateRoute><StudentRankings /></PrivateRoute>} />
         <Route path="/company-dashboard" element={<PrivateRoute><CompanyDashboard /></PrivateRoute>} />
+        <Route path="/sheets-management" element={<PrivateRoute><SheetsManagement /></PrivateRoute>} />
+        <Route path="/approval-queue" element={<PrivateRoute><ApprovalQueue /></PrivateRoute>} />
+        <Route path="/audit-queue" element={<PrivateRoute><AuditQueue /></PrivateRoute>} />
+        <Route path="/portfolio-dashboard" element={<PrivateRoute><PortfolioDashboard /></PrivateRoute>} />
         <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
         
         {/* Default route redirect */}
