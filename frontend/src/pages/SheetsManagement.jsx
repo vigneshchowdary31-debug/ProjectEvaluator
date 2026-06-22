@@ -129,13 +129,22 @@ export default function SheetsManagement() {
           <h1 className="text-2xl font-extrabold text-white">Google Sheets Intake Connection</h1>
           <p className="text-sm text-gray-400">Automate project setup and sync student data from spreadsheet templates.</p>
         </div>
-        <button 
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-all shadow-lg shadow-indigo-600/10"
-        >
-          <Plus className="w-4 h-4" />
-          Connect Sheet
-        </button>
+        <div className="flex items-center gap-3">
+          <a 
+            href="/project_intake_template.csv" 
+            download="project_intake_template.csv"
+            className="flex items-center gap-2 px-4 py-2 bg-[#16161c] border border-white/5 hover:bg-white/10 text-gray-300 rounded-lg font-medium text-sm transition-all"
+          >
+            Download CSV Template
+          </a>
+          <button 
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-all shadow-lg shadow-indigo-600/10"
+          >
+            <Plus className="w-4 h-4" />
+            Connect Sheet
+          </button>
+        </div>
       </div>
 
       {loading ? (
