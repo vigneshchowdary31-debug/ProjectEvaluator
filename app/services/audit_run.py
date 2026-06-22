@@ -77,3 +77,78 @@ class AuditRunService:
             update_data["result_summary"] = data.result_summary
 
         return self.audit_run_repo.update(run, update_data)
+
+    def get_audit_run_diagnostics(self, audit_run_id: str) -> dict:
+        """
+        Gathers diagnostic details for an audit run, including checked backend dependency health status.
+        """
+        run = self.get_audit_run(audit_run_id)
+        
+        # Check backend dependencies dynamically
+        dependency_status = {}
+        
+        # 1. Supabase/PostgreSQL
+        try:
+            from sqlalchemy import text
+            self.audit_run_repo.db.execute(text("select 1"))
+            dependency_status["supabase"] = "healthy"
+        except Exception as e:
+            dependency_status["supabase"] = f"unhealthy ({str(e)})"
+            
+        # 2. Gemini API
+        from app.config import get_settings
+        settings = get_settings()
+        if not settings.GEMINI_API_KEY:
+            dependency_status["gemini"] = "unconfigured (missing key)"
+        else:
+            try:
+                from google import genai
+                client = genai.Client(api_key=settings.GEMINI_API_KEY)
+                dependency_status["gemini"] = "healthy"
+            except Exception as e:
+                dependency_status["gemini"] = f"unhealthy ({str(e)})"
+                
+        # 3. Playwright Headless Browser
+        try:
+            import playwright
+            dependency_status["playwright"] = "healthy"
+        except Exception as e:
+            dependency_status["playwright"] = f"unhealthy (missing package: {str(e)})"
+            
+        # 4. Google Drive API
+        from app.services.google_drive import GoogleDriveService
+        try:
+            drive = GoogleDriveService()
+            if not drive.enabled:
+                dependency_status["google_drive"] = "disabled"
+            else:
+                try:
+                    drive.service.files().list(pageSize=1).execute()
+                    dependency_status["google_drive"] = "healthy"
+                except Exception as e:
+                    dependency_status["google_drive"] = f"degraded ({str(e)})"
+        except Exception as e:
+            dependency_status["google_drive"] = f"unhealthy ({str(e)})"
+                
+        # 5. Google Sheets API
+        from app.services.google_sheets import GoogleSheetsService
+        try:
+            sheets = GoogleSheetsService()
+            if not sheets.enabled:
+                dependency_status["google_sheets"] = "disabled"
+            else:
+                if sheets.service:
+                    dependency_status["google_sheets"] = "healthy"
+                else:
+                    dependency_status["google_sheets"] = "unhealthy"
+        except Exception as e:
+            dependency_status["google_sheets"] = f"unhealthy ({str(e)})"
+
+        return {
+            "audit_run_id": run.id,
+            "failed_stage": run.failed_stage,
+            "failure_reason": run.failure_reason,
+            "failure_stack_trace": run.failure_stack_trace,
+            "last_successful_step": run.last_successful_step,
+            "dependency_status": dependency_status
+        }

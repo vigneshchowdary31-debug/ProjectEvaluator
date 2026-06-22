@@ -42,9 +42,22 @@ class AuditRunResponse(BaseModel):
     result_summary: Optional[str]
     project_id: str
     triggered_by: str
+    failed_stage: Optional[str] = None
+    failure_reason: Optional[str] = None
+    failure_stack_trace: Optional[str] = None
+    last_successful_step: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AuditRunDiagnosticsResponse(BaseModel):
+    audit_run_id: str
+    failed_stage: Optional[str] = None
+    failure_reason: Optional[str] = None
+    failure_stack_trace: Optional[str] = None
+    last_successful_step: Optional[str] = None
+    dependency_status: Dict[str, str]
 
 
 class AuditRunListResponse(BaseModel):

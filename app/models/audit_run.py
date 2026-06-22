@@ -42,6 +42,18 @@ class AuditRun(Base):
     triggered_by: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False
     )
+    failed_stage: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
+    failure_reason: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
+    failure_stack_trace: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
+    last_successful_step: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )

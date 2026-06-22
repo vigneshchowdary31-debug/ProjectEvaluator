@@ -14,11 +14,23 @@ from app.schemas.audit_run import (
     AuditRunListResponse,
     AuditRunResponse,
     AuditRunStatusUpdate,
+    AuditRunDiagnosticsResponse,
 )
 from app.services.audit_run import AuditRunService
 from app.utils.ws_manager import ws_manager
 
 router = APIRouter(prefix="/api/v1/audit-runs", tags=["Audit Runs"])
+
+
+@router.get("/{audit_run_id}/diagnostics", response_model=AuditRunDiagnosticsResponse)
+def get_audit_run_diagnostics(
+    audit_run_id: str,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get failure diagnostics and dependency health status for an audit run."""
+    audit_run_service = AuditRunService(db)
+    return audit_run_service.get_audit_run_diagnostics(audit_run_id)
 
 
 @router.get("/", response_model=AuditRunListResponse)

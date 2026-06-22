@@ -248,6 +248,21 @@ class GeminiService:
 
         self.client = genai.Client(api_key=self.api_key)
 
+    def _generate_content(self, **kwargs):
+        """Invoke generate_content with tenacity retry logic for reliability."""
+        from tenacity import retry, stop_after_attempt, wait_exponential
+        
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1.5, min=2, max=12),
+            reraise=True
+        )
+        def _call():
+            logger.info("Attempting Gemini API generateContent call...")
+            return self.client.models.generate_content(**kwargs)
+            
+        return _call()
+
     def analyze_prd(self, document_text: str) -> PRDAnalysisResult:
         """
         Send PRD text to Gemini and return a validated PRDAnalysisResult.
@@ -283,7 +298,7 @@ class GeminiService:
         )
 
         try:
-            response = self.client.models.generate_content(
+            response = self._generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -371,7 +386,7 @@ class GeminiService:
         logger.info("Sending GitHub repo info to Gemini — %d chars", len(prompt))
 
         try:
-            response = self.client.models.generate_content(
+            response = self._generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -480,7 +495,7 @@ class GeminiService:
         logger.info("Sending requirements matching request to Gemini — %d chars", len(prompt))
 
         try:
-            response = self.client.models.generate_content(
+            response = self._generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -617,7 +632,7 @@ class GeminiService:
         logger.info("Sending report generation request to Gemini — %d chars", len(prompt))
 
         try:
-            response = self.client.models.generate_content(
+            response = self._generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -704,7 +719,7 @@ class GeminiService:
         logger.info("Sending role discovery request to Gemini — %d chars", len(prompt))
 
         try:
-            response = self.client.models.generate_content(
+            response = self._generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(

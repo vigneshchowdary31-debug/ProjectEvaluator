@@ -119,6 +119,7 @@ class OrchestratorService:
     async def run_audit_task(self, run_id: str, project_id: str, user_id: str) -> None:
         """Asynchronous execution task running each audit stage sequentially."""
         logger.info("Starting background audit task %s", run_id)
+        logger.info("Audit Started")
         
         from app.database import SessionLocal
         db = SessionLocal()
@@ -135,10 +136,12 @@ class OrchestratorService:
             run = audit_run_repo.get_by_id(run_id)
             if not run:
                 logger.error("Audit run %s not found in database", run_id)
+                logger.info("Audit Failed")
                 return
 
             run.status = "running"
             run.started_at = datetime.now(timezone.utc)
+            run.last_successful_step = "starting"
             db.commit()
 
             start_time = datetime.now(timezone.utc)
@@ -163,8 +166,11 @@ class OrchestratorService:
             if not project:
                 await log_step("failed", 100, "Project not found.", is_error=True)
                 run.status = "failed"
+                run.failed_stage = "starting"
+                run.failure_reason = "Project not found"
                 run.completed_at = datetime.now(timezone.utc)
                 db.commit()
+                logger.info("Audit Failed")
                 return
 
             # ── Setup Google Drive Hierarchical Folder ──────────────────────
@@ -186,9 +192,15 @@ class OrchestratorService:
                     if drive_folder_id:
                         screenshots_folder_id = self.drive_service.create_folder("Screenshots", parent_id=drive_folder_id)
                         reports_folder_id = self.drive_service.create_folder("Reports", parent_id=drive_folder_id)
+                    
+                    run.last_successful_step = "drive"
+                    db.commit()
                 except Exception as e:
                     logger.error("Failed to setup Drive directories: %s", str(e))
                     await log_step("drive", 10, f"Drive directories failed: {str(e)}. Falling back to local storage.")
+            else:
+                run.last_successful_step = "drive"
+                db.commit()
 
             prd_result = None
             github_result = None
@@ -198,14 +210,21 @@ class OrchestratorService:
             # ── Step 1: PRD Requirements Analysis ───────────────────────────
             if project.prd_url:
                 await log_step("prd", 15, "Downloading and parsing PRD Google Doc...")
+                logger.info("PRD Analysis Started")
                 try:
                     prd_response = self.prd_service.analyze(PRDAnalysisRequest(google_doc_url=project.prd_url, project_id=project_id))
                     prd_result = prd_response.analysis
                     await log_step("prd", 30, f"PRD parsed successfully. Found {len(prd_result.features)} expected features.")
+                    logger.info("PRD Analysis Completed")
+                    run.last_successful_step = "prd"
+                    db.commit()
                 except Exception as e:
+                    logger.warning("PRD analysis failed: %s", str(e))
                     await log_step("prd", 30, f"PRD analysis failed: {str(e)}. Proceeding without spec requirements.", is_error=True)
             else:
                 await log_step("prd", 30, "No PRD Google Doc link configured. Skipping specs extraction.")
+                run.last_successful_step = "prd"
+                db.commit()
 
             # Default empty PRD findings if skipped or failed
             if not prd_result:
@@ -218,6 +237,7 @@ class OrchestratorService:
             
             if project.repository_url:
                 await log_step("github", 35, "Fetching repository structure and manifest files from GitHub...")
+                logger.info("GitHub Analysis Started")
                 try:
                     # Retrieve files tree and manifest contents
                     owner, repo_name = self.github_parser.parse_repo_url(project.repository_url)
@@ -244,15 +264,27 @@ class OrchestratorService:
                     github_rating = github_result.architecture_quality.rating
                     
                     await log_step("github", 50, f"GitHub codebase analyzed. Rating: {github_rating.upper()}.")
+                    logger.info("GitHub Analysis Completed")
+                    run.last_successful_step = "github"
+                    db.commit()
                 except Exception as e:
+                    import traceback
+                    tb = traceback.format_exc()
                     await log_step("github", 50, f"GitHub analysis failed: {str(e)}.", is_error=True)
+                    logger.info("Audit Failed")
                     run.status = "failed"
+                    run.failed_stage = "github"
+                    run.failure_reason = f"{type(e).__name__}: {str(e)}"
+                    run.failure_stack_trace = tb
                     run.completed_at = datetime.now(timezone.utc)
                     db.commit()
                     return
             else:
                 await log_step("github", 50, "No GitHub repository URL configured. Audit cannot proceed.", is_error=True)
+                logger.info("Audit Failed")
                 run.status = "failed"
+                run.failed_stage = "github"
+                run.failure_reason = "No GitHub repository URL configured."
                 run.completed_at = datetime.now(timezone.utc)
                 db.commit()
                 return
@@ -262,6 +294,7 @@ class OrchestratorService:
             auth_score_value = 0.0
             if project.deployment_url:
                 await log_step("browser", 55, "Launching headless Playwright crawler on deployment URL...")
+                logger.info("Browser Audit Started")
                 try:
                     # We need to temporarily mock/override drive service folder ID inside browser service
                     old_enabled = self.browser_service.drive_service.enabled
@@ -325,13 +358,14 @@ class OrchestratorService:
                     self.browser_service.drive_service.enabled = old_enabled
 
                     await log_step("browser", 70, f"Crawler execution complete. Visited {len(browser_result.pages_audited)} link viewports.")
+                    logger.info("Browser Audit Completed")
+                    run.last_successful_step = "browser"
+                    db.commit()
 
                     # ── Step 3.25: Save Authenticated Audit Results ──────────────
                     if auth_required and browser_result.auth_status != "UNTESTED":
                         await log_step("auth", 71, f"Saving authenticated audit results. Status: {browser_result.auth_status}")
                         try:
-                            # We need to retrieve the full auth_result from the browser service
-                            # The browser_result carries summary fields; re-derive detailed results
                             auth_audit_record = AuthAuditResult(
                                 audit_run_id=run_id,
                                 project_id=project_id,
@@ -350,16 +384,20 @@ class OrchestratorService:
                             logger.error("Failed to save AuthAuditResult: %s", str(auth_save_err))
 
                 except Exception as e:
+                    logger.error("Crawler failed: %s", str(e))
                     await log_step("browser", 70, f"Crawler failed: {str(e)}.", is_error=True)
             else:
                 await log_step("browser", 70, "No Deployment URL configured. Skipping web crawl testing.")
+                run.last_successful_step = "browser"
+                db.commit()
 
             # ── Step 3.5: RBAC Security Assessment & Report ──────────────────
             await log_step("security", 72, "Running RBAC access boundary assessment...")
+            logger.info("Security Scan Started")
             try:
                 rbac_metrics = self.rbac_security.evaluate(project, browser_result, has_credentials)
                 
-                # Save RBAC audit results in the DB
+                # Save RBAC audit results in the DB (Fix: use db session instead of self.db)
                 db_rbac_result = RBACAuditResult(
                     audit_run_id=run_id,
                     project_id=project_id,
@@ -373,8 +411,8 @@ class OrchestratorService:
                     findings=rbac_metrics["findings"],
                     created_at=datetime.now(timezone.utc)
                 )
-                self.db.add(db_rbac_result)
-                self.db.commit()
+                db.add(db_rbac_result)
+                db.commit()
                 
                 # Save RBAC findings to the Report table so they show up in generic reports
                 if rbac_metrics["status"] == "COMPLETED":
@@ -388,13 +426,13 @@ class OrchestratorService:
                             project_id=project_id,
                             audit_run_id=run_id
                         )
-                        self.db.add(db_report)
-                    self.db.commit()
+                        db.add(db_report)
+                    db.commit()
                 
                 await log_step("security", 74, f"RBAC assessment complete. Status: {rbac_metrics['status']}. Overall score: {rbac_metrics['overall_score']:.1f}%")
             except Exception as rbac_err:
+                logger.error("RBAC boundary assessment failed: %s", str(rbac_err))
                 await log_step("security", 74, f"RBAC boundary assessment failed: {str(rbac_err)}.", is_error=True)
-
 
             # ── Step 4: Advanced Security Scan ──────────────────────────────
             await log_step("security", 75, "Running static security engine and vulnerability checks...")
@@ -404,7 +442,6 @@ class OrchestratorService:
                 
                 # Save findings in Reports table and create Evidences
                 for f in security_findings:
-                    # Save finding as DB Report
                     db_report = Report(
                         title=f.title,
                         summary=f.description,
@@ -425,10 +462,14 @@ class OrchestratorService:
                         confidence_score=1.0,
                         details=json.dumps(f.to_dict())
                     )
-                    evidence_repo.create(evidence_rec)
+                    evidence_rec.create(evidence_rec)
 
                 await log_step("security", 80, f"Security engine scanned manifests. Logged {len(security_findings)} vulnerabilities.")
+                logger.info("Security Scan Completed")
+                run.last_successful_step = "security"
+                db.commit()
             except Exception as e:
+                logger.error("Security checks failed: %s", str(e))
                 await log_step("security", 80, f"Security checks failed: {str(e)}.", is_error=True)
 
             # ── Step 5: Production Readiness Score ──────────────────────────
@@ -443,11 +484,15 @@ class OrchestratorService:
                     file_paths, manifest_contents, len(security_findings), github_rating
                 )
                 await log_step("readiness", 88, f"Maturity rating: {readiness_report['overall_readiness_percentage']}% ({readiness_report['classification']}).")
+                run.last_successful_step = "readiness"
+                db.commit()
             except Exception as e:
+                logger.error("Readiness scoring failed: %s", str(e))
                 await log_step("readiness", 88, f"Readiness scoring failed: {str(e)}.", is_error=True)
 
             # ── Step 6: Requirement Matching (Gap Analysis) ─────────────────
             await log_step("matching", 90, "Comparing PRD specs against implementation details...")
+            logger.info("Requirement Matching Started")
             try:
                 matching_result = self.matching_service.match(RequirementMatchingRequest(
                     prd_findings=prd_result,
@@ -455,7 +500,11 @@ class OrchestratorService:
                     browser_findings=browser_result
                 ))
                 await log_step("matching", 93, f"Gap analysis complete. Confidence: {matching_result.confidence_score:.2f}.")
+                logger.info("Requirement Matching Completed")
+                run.last_successful_step = "matching"
+                db.commit()
             except Exception as e:
+                logger.error("Gap analysis failed: %s", str(e))
                 await log_step("matching", 93, f"Gap analysis failed: {str(e)}.", is_error=True)
 
             # Default empty matching if failed
@@ -466,6 +515,7 @@ class OrchestratorService:
                 )
 
             # ── Save Evidences (Code/Screenshots/Logs) ──────────────────────
+            logger.info("Evidence Engine Started")
             # Code evidence from matched features
             for f in matching_result.implemented_features:
                 files_str = ", ".join(f.matched_files) if f.matched_files else ""
@@ -510,9 +560,11 @@ class OrchestratorService:
                             details=json.dumps({"url": p.url, "errors": p.console_errors})
                         )
                         evidence_repo.create(evidence_rec)
+            logger.info("Evidence Engine Completed")
 
             # ── Step 7: Audience-Tailored Report Generation & Upload ────────
             await log_step("reports", 95, "Synthesizing Student and Company audit reports...")
+            logger.info("Report Generation Started")
             try:
                 # Pre-calculate base completion percentage
                 implemented = matching_result.implemented_features
@@ -523,7 +575,7 @@ class OrchestratorService:
                 if total_features > 0:
                     calc_percentage = ((len(implemented) + 0.5 * len(partial)) / total_features) * 100.0
 
-                # Generate reports using updated Gemini API call containing readiness ratings
+                # Generate reports using Gemini
                 gemini_wrapper = github_service.gemini.generate_project_reports(
                     prd=prd_result,
                     github=github_result,
@@ -554,6 +606,7 @@ class OrchestratorService:
                 # Upload generated report to Google Drive Reports directory
                 if reports_folder_id:
                     try:
+                        logger.info("Google Drive Upload Started")
                         # Write to temporary file
                         with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as temp_file:
                             json.dump(gemini_wrapper.company_report.model_dump(), temp_file, indent=2)
@@ -566,18 +619,31 @@ class OrchestratorService:
                             reports_folder_id
                         )
                         os.unlink(temp_path)
-                        
-                        # Update report run reference with Drive folder URL if wanted
+                        logger.info("Google Drive Upload Completed")
                         logger.info("Uploaded generated report to Google Drive: %s", drive_report_url)
                     except Exception as ex:
                         logger.warning("Failed to upload report to Drive: %s", str(ex))
 
                 await log_step("reports", 98, "Synthesized reports and saved successfully.")
+                logger.info("Report Generation Completed")
+                run.last_successful_step = "reports"
+                db.commit()
             except Exception as e:
+                import traceback
+                tb = traceback.format_exc()
                 await log_step("reports", 98, f"Report synthesis failed: {str(e)}.", is_error=True)
+                logger.info("Audit Failed")
+                run.status = "failed"
+                run.failed_stage = "reports"
+                run.failure_reason = f"{type(e).__name__}: {str(e)}"
+                run.failure_stack_trace = tb
+                run.completed_at = datetime.now(timezone.utc)
+                db.commit()
+                return
 
             # ── Step 8: Complete Audit Run ──────────────────────────────────
             await log_step("complete", 100, "Audit run completed successfully!")
+            logger.info("Audit Finished")
             
             run.status = "completed"
             run.completed_at = datetime.now(timezone.utc)
@@ -585,9 +651,15 @@ class OrchestratorService:
             db.commit()
 
         except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
             logger.error("Audit run %s encountered unhandled error: %s", run_id, str(e))
+            logger.info("Audit Failed")
             try:
                 run.status = "failed"
+                run.failed_stage = run.failed_stage or "unknown"
+                run.failure_reason = f"{type(e).__name__}: {str(e)}"
+                run.failure_stack_trace = tb
                 run.completed_at = datetime.now(timezone.utc)
                 db.commit()
             except Exception:
