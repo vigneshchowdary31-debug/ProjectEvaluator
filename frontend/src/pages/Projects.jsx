@@ -43,18 +43,24 @@ export default function Projects() {
       // Fetch latest reports for each project to get details
       const projectsWithDetails = await Promise.all(
         res.data.items.map(async (p) => {
-          let completion = 0.0;
+          let completion = -1.0;
           let readiness = 0.0;
           let risk = 'Low';
           let last_audit = 'Never';
 
           try {
+            // Fetch the latest audit run to get the true last audit timestamp
+            const runsRes = await api.get(`/api/v1/projects/${p.id}/audit-runs?page_size=1`);
+            if (runsRes.data && runsRes.data.items && runsRes.data.items.length > 0) {
+              const latestRun = runsRes.data.items[0];
+              last_audit = new Date(latestRun.created_at).toLocaleString();
+            }
+
             const repRes = await api.get(`/api/v1/reports/project/${p.id}`);
             if (repRes.data && repRes.data.length > 0) {
               const latest = repRes.data[0];
               completion = latest.completion_percentage;
               readiness = latest.student_report.production_readiness_score || 50.0;
-              last_audit = new Date(latest.created_at).toLocaleDateString();
 
               // Count vulnerabilities to estimate risk
               const vulnsRes = await api.get(`/api/v1/reports/?project_id=${p.id}`);
@@ -89,6 +95,19 @@ export default function Projects() {
   useEffect(() => {
     fetchProjects();
   }, []);
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setModalOpen(false);
+      }
+    };
+    if (modalOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [modalOpen]);
 
   const handleOpenCreate = () => {
     setEditingProject(null);
@@ -333,12 +352,16 @@ export default function Projects() {
                     {/* Completion percent */}
                     <div className="flex items-center justify-between text-xs font-semibold">
                       <span className="text-gray-400">Completion Score</span>
-                      <span className="text-white">{p.completion_percentage.toFixed(1)}%</span>
+                      <span className="text-white">
+                        {p.last_audit === 'Never' || p.completion_percentage < 0 
+                          ? 'N/A' 
+                          : `${p.completion_percentage.toFixed(1)}%`}
+                      </span>
                     </div>
                     <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
                       <div 
                         className="bg-gradient-to-r from-indigo-500 to-indigo-400 h-full rounded-full transition-all duration-500" 
-                        style={{ width: `${p.completion_percentage}%` }}
+                        style={{ width: `${p.last_audit === 'Never' || p.completion_percentage < 0 ? 0 : p.completion_percentage}%` }}
                       ></div>
                     </div>
                   </div>
@@ -382,11 +405,23 @@ export default function Projects() {
 
       {/* Register/Edit Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div 
+          onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false); }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+        >
           <div className="w-full max-w-lg glass-card rounded-2xl border border-white/10 shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-hidden">
-            <h3 className="text-lg font-black text-white uppercase tracking-wider mb-4 shrink-0">
-              {editingProject ? 'Edit Project Config' : 'Register New Project'}
-            </h3>
+            <div className="flex justify-between items-center mb-4 shrink-0">
+              <h3 className="text-lg font-black text-white uppercase tracking-wider">
+                {editingProject ? 'Edit Project Config' : 'Register New Project'}
+              </h3>
+              <button 
+                type="button"
+                onClick={() => setModalOpen(false)} 
+                className="text-gray-400 hover:text-white text-2xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
 
             <form onSubmit={handleModalSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
               {/* Scrollable Fields Wrapper */}

@@ -38,6 +38,8 @@ class AuditQueue(Base):
         DateTime(timezone=True), nullable=True
     )
     failure_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    failed_stage: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    last_successful_step: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )

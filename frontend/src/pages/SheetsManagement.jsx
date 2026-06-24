@@ -30,6 +30,20 @@ export default function SheetsManagement() {
     fetchSheets();
   }, []);
 
+  // Handle Escape key to close modals
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowAddModal(false);
+        setShowLogsModal(false);
+      }
+    };
+    if (showAddModal || showLogsModal) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showAddModal, showLogsModal]);
+
   const fetchSheets = async () => {
     setLoading(true);
     try {
@@ -248,7 +262,10 @@ export default function SheetsManagement() {
 
       {/* Add Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div 
+          onClick={(e) => { if (e.target === e.currentTarget) setShowAddModal(false); }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+        >
           <div className="bg-[#0f0f13] border border-white/10 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-bold text-white">Connect New Google Sheet</h3>
@@ -333,7 +350,10 @@ export default function SheetsManagement() {
 
       {/* Logs Modal */}
       {showLogsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div 
+          onClick={(e) => { if (e.target === e.currentTarget) setShowLogsModal(false); }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+        >
           <div className="bg-[#0f0f13] border border-white/10 rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
             <div className="flex justify-between items-center shrink-0">
               <h3 className="text-lg font-bold text-white">Sync Execution Logs - {selectedSheet?.sheet_name}</h3>

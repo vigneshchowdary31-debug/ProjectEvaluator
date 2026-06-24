@@ -15,7 +15,7 @@ from app.schemas.github import (
     GithubAnalysisResponse,
     GithubAnalysisResultSchema,
 )
-from app.services.gemini import GeminiError, GeminiService
+from app.services.llm.llm_service import LLMService, LLMError
 from app.services.github_parser import GithubParserService, ParserError
 from app.config import get_settings
 from app.utils.exceptions import BadRequestException
@@ -26,13 +26,13 @@ logger = logging.getLogger(__name__)
 class GithubAnalysisService:
     """
     Orchestrates the GitHub analysis pipeline with caching:
-    URL → Check DB Cache → (Cache Hit? Return) → Fetch via API → Analyze via Gemini → Save Cache → Return
+    URL → Check DB Cache → (Cache Hit? Return) → Fetch via API → Analyze via LLM → Save Cache → Return
     """
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, audit_run=None):
         self.db = db
         self.parser = GithubParserService()
-        self.gemini = GeminiService()
+        self.llm = LLMService(audit_run=audit_run)
         self.repo = GithubAnalysisRepository(db)
         self.settings = get_settings()
 
@@ -98,7 +98,7 @@ class GithubAnalysisService:
                 logger.info("Cache stale or SHA changed for %s (sha_matches=%s, ttl_expired=%s)", normalized_url, sha_matches, ttl_expired)
 
         # 4. Fetch full repo tree and manifest files (Cache Miss)
-        logger.info("Cache miss. Fetching details and performing Gemini analysis for: %s", normalized_url)
+        logger.info("Cache miss. Fetching details and performing LLM analysis for: %s", normalized_url)
         try:
             tree_nodes = self.parser.fetch_git_tree(owner, repo_name, commit_sha or default_branch)
             
@@ -134,16 +134,16 @@ class GithubAnalysisService:
         # 5. Build nested folder tree structure (capping at depth 4 / 200 files)
         folder_tree = self.parser.build_folder_tree(file_paths, max_depth=4, max_files=200)
 
-        # 6. Analyze with Gemini
+        # 6. Analyze with LLM
         try:
-            analysis_result = self.gemini.analyze_github(
+            analysis_result = self.llm.analyze_github(
                 repo_name=f"{owner}/{repo_name}",
                 folder_tree=folder_tree,
                 manifest_contents=manifest_contents
             )
-        except GeminiError as e:
+        except LLMError as e:
             if cached_record:
-                logger.warning("Gemini analysis failed: %s. Falling back to cached analysis.", str(e))
+                logger.warning("LLM analysis failed: %s. Falling back to cached analysis.", str(e))
                 return self._build_response(
                     repo_url=normalized_url, 
                     commit_sha=cached_record.commit_sha, 

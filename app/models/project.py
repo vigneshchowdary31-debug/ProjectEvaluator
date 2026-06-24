@@ -71,8 +71,8 @@ class Project(Base):
     evidences: Mapped[list["Evidence"]] = relationship(  # noqa: F821
         "Evidence", back_populates="project", cascade="all, delete-orphan"
     )
-    generated_reports: Mapped[list["GeneratedReport"]] = relationship(  # noqa: F821
-        "GeneratedReport", back_populates="project", cascade="all, delete-orphan"
+    project_reports: Mapped[list["ProjectReport"]] = relationship(  # noqa: F821
+        "ProjectReport", back_populates="project", cascade="all, delete-orphan"
     )
     
     # New relationships

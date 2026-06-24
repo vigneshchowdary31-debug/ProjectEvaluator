@@ -60,7 +60,7 @@ class PRDParserService:
 
         raise ParserError(
             f"Could not extract Google Document ID from URL: {url}. "
-            "Ensure the URL is a valid Google Docs link."
+            "Ensure the URL is a valid Google Docs link (OneDrive, Notion, etc. are not supported)."
         )
 
     @staticmethod
@@ -122,6 +122,14 @@ class PRDParserService:
         raw_text = response.text.strip()
         if not raw_text:
             raise ParserError("Document appears to be empty.")
+
+        # If Google redirects to a sign-in page, the content will be HTML instead of text.
+        lower_text = raw_text.lstrip().lower()
+        if lower_text.startswith("<!doctype html") or lower_text.startswith("<html"):
+            raise ParserError(
+                "Access denied. The document is private or requires authentication. "
+                "Please ensure the Google Doc is shared as 'Anyone with the link can view'."
+            )
 
         # ── Extract title (first non-empty line) ────────────────────────
         title = self._extract_title(raw_text)

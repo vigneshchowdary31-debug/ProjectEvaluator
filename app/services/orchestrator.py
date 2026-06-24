@@ -462,7 +462,7 @@ class OrchestratorService:
                         confidence_score=1.0,
                         details=json.dumps(f.to_dict())
                     )
-                    evidence_rec.create(evidence_rec)
+                    db.add(evidence_rec)
 
                 await log_step("security", 80, f"Security engine scanned manifests. Logged {len(security_findings)} vulnerabilities.")
                 logger.info("Security Scan Completed")
@@ -575,8 +575,8 @@ class OrchestratorService:
                 if total_features > 0:
                     calc_percentage = ((len(implemented) + 0.5 * len(partial)) / total_features) * 100.0
 
-                # Generate reports using Gemini
-                gemini_wrapper = github_service.gemini.generate_project_reports(
+                # Generate Unified Project Audit Report using LLM
+                report_data = github_service.llm.generate_project_reports(
                     prd=prd_result,
                     github=github_result,
                     browser=browser_result,
@@ -586,45 +586,78 @@ class OrchestratorService:
                     readiness_classification=readiness_report["classification"]
                 )
                 
-                # Manually inject readiness scores into Pydantic structures for database dump compatibility
-                gemini_wrapper.student_report.production_readiness_score = readiness_report["overall_readiness_percentage"]
-                gemini_wrapper.student_report.production_readiness_classification = readiness_report["classification"]
-                gemini_wrapper.company_report.production_readiness_score = readiness_report["overall_readiness_percentage"]
-                gemini_wrapper.company_report.production_readiness_classification = readiness_report["classification"]
+                # Supabase Storage Upload
+                from app.services.storage.supabase_storage import SupabaseStorageService
+                storage_service = SupabaseStorageService()
+                
+                supabase_report_url = None
+                supabase_pdf_url = None
+                supabase_json_url = None
+                
+                try:
+                    logger.info("Supabase Storage Upload Started")
+                    # Upload JSON report
+                    json_content = report_data.model_dump_json(indent=2).encode('utf-8')
+                    supabase_json_url = storage_service.upload_bytes(
+                        file_bytes=json_content,
+                        destination_path=f"projects/{project_id}/runs/{run_id}/report.json",
+                        content_type="application/json"
+                    )
+                    
+                    # Generate and Upload PDF report
+                    from app.services.pdf_service import PdfService
+                    import tempfile
+                    
+                    pdf_service = PdfService()
+                    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf:
+                        tmp_pdf_path = tmp_pdf.name
+                        
+                    pdf_path = await pdf_service.generate_pdf(report_data.model_dump(), tmp_pdf_path)
+                    
+                    if pdf_path:
+                        supabase_pdf_url = storage_service.upload_file(
+                            file_path=pdf_path,
+                            destination_path=f"projects/{project_id}/runs/{run_id}/report.pdf",
+                            content_type="application/pdf"
+                        )
+                        os.unlink(pdf_path)
+                    
+                    # Currently we don't have a beautiful web report URL, so report_url is None or fallback to JSON
+                    supabase_report_url = supabase_json_url
+                        
+                    logger.info("Supabase Storage Upload Completed")
+                except Exception as ex:
+                    logger.warning("Failed to upload report to Supabase: %s", str(ex))
 
                 # Save the synthesized report to DB
-                from app.models.generated_report import GeneratedReport
-                db_report = GeneratedReport(
+                from app.models.project_report import ProjectReport
+                from app.repositories.project_report import ProjectReportRepository
+                
+                db_report = ProjectReport(
+                    audit_run_id=run_id,
                     project_id=project_id,
-                    completion_percentage=calc_percentage,
-                    student_report=gemini_wrapper.student_report.model_dump(),
-                    company_report=gemini_wrapper.company_report.model_dump()
+                    overall_score=report_data.overall_score,
+                    completion_score=report_data.requirement_completion_score,
+                    security_score=report_data.security_score,
+                    performance_score=report_data.performance_score,
+                    uiux_score=report_data.uiux_score,
+                    code_quality_score=report_data.code_quality_score,
+                    production_readiness=report_data.status,
+                    status=report_data.status,
+                    report_data=report_data.model_dump(),
+                    report_url=supabase_report_url,
+                    pdf_url=supabase_pdf_url,
+                    json_url=supabase_json_url
                 )
-                db.add(db_report)
+                
+                report_repo = ProjectReportRepository(db)
+                report_repo.create(db_report)
+                
+                # Link to AuditRun (now automatic via ProjectReport.audit_run_id)
+                db.commit()
                 db.commit()
 
-                # Upload generated report to Google Drive Reports directory
-                if reports_folder_id:
-                    try:
-                        logger.info("Google Drive Upload Started")
-                        # Write to temporary file
-                        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as temp_file:
-                            json.dump(gemini_wrapper.company_report.model_dump(), temp_file, indent=2)
-                            temp_path = temp_file.name
-                        
-                        drive_report_url = self.drive_service.upload_file(
-                            temp_path, 
-                            f"Company_Report_Run_{run_id}.json", 
-                            "application/json", 
-                            reports_folder_id
-                        )
-                        os.unlink(temp_path)
-                        logger.info("Google Drive Upload Completed")
-                        logger.info("Uploaded generated report to Google Drive: %s", drive_report_url)
-                    except Exception as ex:
-                        logger.warning("Failed to upload report to Drive: %s", str(ex))
-
-                await log_step("reports", 98, "Synthesized reports and saved successfully.")
+                await log_step("reports", 98, "Synthesized and saved Project Audit Report successfully.")
                 logger.info("Report Generation Completed")
                 run.last_successful_step = "reports"
                 db.commit()

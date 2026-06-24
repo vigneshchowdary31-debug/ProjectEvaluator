@@ -8,15 +8,15 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.models.generated_report import GeneratedReport
+from app.models.project_report import ProjectReport
 from app.models.user import User
 from app.repositories.project import ProjectRepository
-from app.repositories.generated_report import GeneratedReportRepository
+from app.repositories.project_report import ProjectReportRepository
 from app.schemas.report_generation import (
     ReportGenerationRequest,
     ReportGenerationResponse,
 )
-from app.services.gemini import GeminiError, GeminiService
+from app.services.llm.llm_service import LLMService, LLMError
 from app.utils.exceptions import BadRequestException, ForbiddenException, NotFoundException
 
 logger = logging.getLogger(__name__)
@@ -25,11 +25,12 @@ logger = logging.getLogger(__name__)
 class ReportGenerationService:
     """Orchestrates report generation and database storage."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, audit_run=None):
         self.db = db
         self.project_repo = ProjectRepository(db)
-        self.report_repo = GeneratedReportRepository(db)
-        self.gemini = GeminiService()
+        self.report_repo = ProjectReportRepository(db)
+        self.audit_run = audit_run
+        self.llm = LLMService(audit_run=audit_run)
 
     def generate(
         self, request: ReportGenerationRequest, current_user: User
@@ -55,34 +56,39 @@ class ReportGenerationService:
         missing = request.requirement_analysis.missing_features
         
         total_features = len(implemented) + len(partial) + len(missing)
-        calc_percentage = 0.0
+        calc_percentage = -1.0
         if total_features > 0:
             calc_percentage = ((len(implemented) + 0.5 * len(partial)) / total_features) * 100.0
 
         logger.info("Calculated base completion percentage: %.1f%%", calc_percentage)
 
-        # 4. Invoke Gemini to generate reports
+        # 4. Invoke LLM to generate reports
         try:
-            gemini_wrapper = self.gemini.generate_project_reports(
+            report_data = self.llm.generate_project_reports(
                 prd=request.prd_analysis,
                 github=request.github_analysis,
                 browser=request.browser_analysis,
                 matching=request.requirement_analysis,
                 calc_percentage=calc_percentage
             )
-        except GeminiError as e:
-            logger.error("Gemini report generation failed: %s", str(e))
+        except LLMError as e:
+            logger.error("LLM report generation failed: %s", str(e))
             raise BadRequestException(detail=f"Report generation failed: {str(e)}")
 
         # 5. Build and save database model
-        student_dict = gemini_wrapper.student_report.model_dump()
-        company_dict = gemini_wrapper.company_report.model_dump()
-
-        db_report = GeneratedReport(
+        audit_run_id = self.audit_run.id if self.audit_run else ""
+        db_report = ProjectReport(
+            audit_run_id=audit_run_id,
             project_id=request.project_id,
-            completion_percentage=calc_percentage,
-            student_report=student_dict,
-            company_report=company_dict
+            overall_score=report_data.overall_score,
+            completion_score=report_data.requirement_completion_score,
+            security_score=report_data.security_score,
+            performance_score=report_data.performance_score,
+            uiux_score=report_data.uiux_score,
+            code_quality_score=report_data.code_quality_score,
+            production_readiness=report_data.status,
+            status=report_data.status,
+            report_data=report_data.model_dump()
         )
         
         self.report_repo.create(db_report)
@@ -93,8 +99,6 @@ class ReportGenerationService:
         return ReportGenerationResponse(
             id=db_report.id,
             project_id=db_report.project_id,
-            completion_percentage=db_report.completion_percentage,
-            student_report=gemini_wrapper.student_report,
-            company_report=gemini_wrapper.company_report,
-            created_at=db_report.created_at.isoformat()
+            report=report_data,
+            created_at=db_report.generated_at.isoformat()
         )

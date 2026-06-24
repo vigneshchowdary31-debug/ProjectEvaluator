@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Project Audit Report</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; line-height: 1.6; padding: 40px; margin: 0; background-color: #f9fafb; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        h1 { color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 20px; }
+        h2 { color: #374151; margin-top: 30px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; }
+        h3 { color: #4b5563; margin-top: 20px; }
+        .score-box { background: #eff6ff; border: 1px solid #bfdbfe; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+        .score-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .score-label { font-weight: bold; }
+        .status-pass { color: #059669; font-weight: bold; }
+        .status-fail { color: #dc2626; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 15px; }
+        th, td { border: 1px solid #e5e7eb; padding: 10px; text-align: left; }
+        th { background: #f3f4f6; }
+        .evidence-img { max-width: 100%; border: 1px solid #ddd; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Project Audit Report</h1>
+        <div class="score-box">
+            <div class="score-row">
+                <span class="score-label">Overall Score:</span>
+                <span>{{ report.overall_score }}/100</span>
+            </div>
+            <div class="score-row">
+                <span class="score-label">Status:</span>
+                <span class="{% if report.status == 'PASS' %}status-pass{% else %}status-fail{% endif %}">{{ report.status }}</span>
+            </div>
+            <div class="score-row">
+                <span class="score-label">Production Readiness:</span>
+                <span>{{ report.production_readiness }}</span>
+            </div>
+        </div>
+
+        <h2>Executive Summary</h2>
+        <p>{{ report.executive_summary }}</p>
+
+        <h2>Detailed Scores</h2>
+        <ul>
+            <li>Requirement Completion: {{ report.requirement_completion_score }}/100</li>
+            <li>Security: {{ report.security_score }}/100</li>
+            <li>Performance: {{ report.performance_score }}/100</li>
+            <li>UI/UX: {{ report.uiux_score }}/100</li>
+            <li>Code Quality: {{ report.code_quality_score }}/100</li>
+        </ul>
+
+        <h2>Key Strengths</h2>
+        <ul>
+            {% for item in report.key_strengths %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+
+        <h2>Critical Findings</h2>
+        <ul>
+            {% for item in report.critical_findings %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+
+        <h2>Remaining Work</h2>
+        <ul>
+            {% for item in report.remaining_work %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+
+    </div>
+</body>
+</html>

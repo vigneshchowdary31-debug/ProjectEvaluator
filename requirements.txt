@@ -17,4 +17,6 @@ google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.0.0
 psycopg2-binary>=2.9.0
 alembic>=1.12.0
+openai>=1.40.0
 
+openai

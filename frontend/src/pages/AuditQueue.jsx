@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Play, Pause, RefreshCw, AlertTriangle, CheckCircle2, 
-  Clock, Ban, Server, KanbanSquare, HelpCircle, Activity 
+  Clock, Ban, Server, KanbanSquare, HelpCircle, Activity,
+  ShieldAlert, FileText, Loader2
 } from 'lucide-react';
 import api from '../api';
 import { API_PATHS } from '../constants/apiPaths';
@@ -12,6 +13,39 @@ export default function AuditQueue() {
   const [workerLimit, setWorkerLimit] = useState(0);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState(null);
+
+  // Failure Diagnostics state
+  const [selectedDiagnosticsRun, setSelectedDiagnosticsRun] = useState(null);
+  const [diagnosticsData, setDiagnosticsData] = useState(null);
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState(false);
+
+  const handleOpenDiagnostics = async (runId) => {
+    setSelectedDiagnosticsRun(runId);
+    setLoadingDiagnostics(true);
+    setDiagnosticsData(null);
+    try {
+      const res = await api.get(`/api/v1/audit-runs/${runId}/diagnostics`);
+      setDiagnosticsData(res.data);
+    } catch (err) {
+      console.error("Failed to load audit diagnostics", err);
+    } finally {
+      setLoadingDiagnostics(false);
+    }
+  };
+
+  // Handle Escape key to close failure diagnostics modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedDiagnosticsRun(null);
+        setDiagnosticsData(null);
+      }
+    };
+    if (selectedDiagnosticsRun) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDiagnosticsRun]);
 
   useEffect(() => {
     fetchQueueData();
@@ -190,16 +224,36 @@ export default function AuditQueue() {
                       <td className="p-4 max-w-xs truncate text-xs text-rose-400 font-medium" title={item.failure_reason}>
                         {item.failure_reason || '-'}
                       </td>
-                      <td className="p-4 text-right">
+                      <td className="p-4 text-right flex justify-end gap-2">
                         {isQueued && (
                           <button
                             disabled={cancellingId === item.id}
                             onClick={() => handleCancel(item.id)}
-                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition-all text-xs font-semibold flex items-center gap-1 ml-auto"
+                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition-all text-xs font-semibold flex items-center gap-1"
                             title="Cancel queued run"
                           >
                             {cancellingId === item.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
                             Cancel
+                          </button>
+                        )}
+                        {item.status.toLowerCase() === 'completed' && item.audit_run_id && (
+                          <a
+                            href={`#/report/${item.audit_run_id}`}
+                            className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg transition-all text-xs font-semibold flex items-center gap-1"
+                            title="View Generated Report"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            Report
+                          </a>
+                        )}
+                        {item.status.toLowerCase() === 'failed' && item.audit_run_id && (
+                          <button
+                            onClick={() => handleOpenDiagnostics(item.audit_run_id)}
+                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition-all text-xs font-semibold flex items-center gap-1"
+                            title="Diagnose failure"
+                          >
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            Diagnose
                           </button>
                         )}
                       </td>
@@ -208,6 +262,110 @@ export default function AuditQueue() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Failure Diagnostics Modal */}
+      {selectedDiagnosticsRun && (
+        <div 
+          onClick={(e) => { if (e.target === e.currentTarget) { setSelectedDiagnosticsRun(null); setDiagnosticsData(null); } }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+        >
+          <div className="bg-[#0b0c10] border border-white/10 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            {/* Header */}
+            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-rose-950/20 to-neutral-900">
+              <div className="space-y-1 bg-transparent">
+                <h3 className="text-lg font-black text-rose-400 flex items-center gap-2 uppercase tracking-wider">
+                  <ShieldAlert className="w-5 h-5 text-rose-500" />
+                  Audit Failure Diagnostics
+                </h3>
+                <p className="text-xs text-gray-400 font-mono">Run ID: {selectedDiagnosticsRun}</p>
+              </div>
+              <button
+                onClick={() => { setSelectedDiagnosticsRun(null); setDiagnosticsData(null); }}
+                className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs font-bold uppercase tracking-wider"
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              {loadingDiagnostics ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <Loader2 className="w-8 h-8 text-rose-500 animate-spin" />
+                  <span className="text-xs text-gray-400 font-extrabold uppercase tracking-widest">Running dependency diagnostics...</span>
+                </div>
+              ) : diagnosticsData ? (
+                <>
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-white/5 border border-white/5 rounded-xl space-y-1">
+                      <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">Failed Stage</span>
+                      <span className="text-sm font-black text-rose-400 uppercase tracking-widest">{diagnosticsData.failed_stage || 'Unknown'}</span>
+                    </div>
+                    <div className="p-4 bg-white/5 border border-white/5 rounded-xl space-y-1">
+                      <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">Last Successful Step</span>
+                      <span className="text-sm font-black text-emerald-400 uppercase tracking-widest">{diagnosticsData.last_successful_step || 'None'}</span>
+                    </div>
+                  </div>
+
+                  {/* Failure Reason */}
+                  <div className="p-4 bg-rose-950/20 border border-rose-500/20 rounded-xl space-y-2">
+                      <span className="text-[10px] text-rose-400 font-extrabold uppercase tracking-wider block">Error Message</span>
+                      <p className="text-xs font-bold text-rose-200 leading-relaxed">{diagnosticsData.failure_reason || 'No error message captured.'}</p>
+                  </div>
+
+                  {/* Stack Trace */}
+                  {diagnosticsData.failure_stack_trace && (
+                    <div className="space-y-2">
+                      <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">Python Exception Stack Trace</span>
+                      <pre className="p-4 bg-black/60 border border-white/5 rounded-xl text-[10px] font-mono text-gray-300 overflow-x-auto max-h-48 overflow-y-auto leading-relaxed whitespace-pre">
+                        {diagnosticsData.failure_stack_trace}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Dependencies Health */}
+                  <div className="space-y-3">
+                    <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">Environment Dependency Health Check</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {Object.entries(diagnosticsData.dependency_status || {}).map(([dep, status]) => {
+                        const isHealthy = status === 'healthy';
+                        const isDisabled = status === 'disabled';
+                        return (
+                          <div key={dep} className="p-3.5 bg-[#070709] border border-white/5 rounded-xl flex items-center justify-between">
+                            <span className="text-xs font-bold text-gray-300 capitalize">{dep.replace('_', ' ')}</span>
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${
+                              isHealthy 
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                                : isDisabled 
+                                  ? 'bg-gray-500/10 text-gray-400 border-white/5' 
+                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                            }`}>
+                              {status}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-6 text-xs text-gray-500 font-bold uppercase">Failed to retrieve diagnostics data.</div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/5 bg-[#070709] flex justify-end">
+              <button
+                onClick={() => { setSelectedDiagnosticsRun(null); setDiagnosticsData(null); }}
+                className="bg-white/5 hover:bg-white/10 text-white font-bold text-xs uppercase tracking-widest px-5 py-2.5 rounded-xl border border-white/10 transition-all"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         </div>
       )}

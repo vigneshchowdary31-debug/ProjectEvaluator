@@ -91,10 +91,9 @@ def test_queue_service_operations():
 @pytest.mark.anyio
 @patch("app.services.orchestrator.OrchestratorService.trigger_audit_direct")
 @patch("app.services.orchestrator.OrchestratorService.run_audit_task")
-@patch("app.services.sheet_writeback.SheetWritebackService.writeback")
 @patch("app.services.portfolio_engine.PortfolioEngine.generate_portfolio")
 async def test_worker_process_task(
-    mock_portfolio, mock_writeback, mock_run_task, mock_trigger_direct
+    mock_portfolio, mock_run_task, mock_trigger_direct
 ):
     # Setup mock Orchestrator returns
     mock_run = AuditRun(id="run-uuid", project_id="project-uuid", status="completed")
@@ -120,8 +119,7 @@ async def test_worker_process_task(
     )
     mock_run_task.assert_called_once_with("run-uuid", "project-uuid", "admin-user-id")
     
-    # Verify sheets writeback and company portfolio refresh were invoked
-    mock_writeback.assert_called_once_with("project-uuid")
+    # Verify company portfolio refresh was invoked
     mock_portfolio.assert_called_once_with("Google")
     
     # Verify queue item is updated to completed

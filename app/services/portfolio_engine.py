@@ -14,7 +14,7 @@ from sqlalchemy import select, func
 
 from app.models.project import Project
 from app.models.company_portfolio import CompanyPortfolio
-from app.models.generated_report import GeneratedReport
+from app.models.project_report import ProjectReport
 from app.models.report import Report
 from app.models.audit_run import AuditRun
 from app.services.google_drive import GoogleDriveService
@@ -62,9 +62,9 @@ class PortfolioEngine:
         all_findings = []
 
         for p in projects:
-            latest_report = self.db.query(GeneratedReport).filter(
-                GeneratedReport.project_id == p.id
-            ).order_by(GeneratedReport.created_at.desc()).first()
+            latest_report = self.db.query(ProjectReport).filter(
+                ProjectReport.project_id == p.id
+            ).order_by(ProjectReport.generated_at.desc()).first()
 
             latest_run = self.db.query(AuditRun).filter(
                 AuditRun.project_id == p.id
@@ -76,8 +76,9 @@ class PortfolioEngine:
             findings_count = 0
 
             if latest_report:
-                comp = latest_report.completion_percentage
-                read = latest_report.student_report.get("production_readiness_score", 0.0)
+                comp = latest_report.completion_score
+                rep_data = latest_report.report_data
+                read = rep_data.get("production_readiness_score", 0.0) if isinstance(rep_data, dict) else 0.0
 
             if latest_run:
                 reports = self.db.query(Report).filter(Report.audit_run_id == latest_run.id).all()

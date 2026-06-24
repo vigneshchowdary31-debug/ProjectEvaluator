@@ -43,6 +43,24 @@ export default function ProjectDetail() {
   const [diagnosticsData, setDiagnosticsData] = useState(null);
   const [loadingDiagnostics, setLoadingDiagnostics] = useState(false);
 
+  // Lightbox Image State
+  const [activeLightboxImage, setActiveLightboxImage] = useState(null);
+
+  // Handle ESC key to close failure diagnostics and lightbox modals
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedDiagnosticsRun(null);
+        setDiagnosticsData(null);
+        setActiveLightboxImage(null);
+      }
+    };
+    if (selectedDiagnosticsRun || activeLightboxImage) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDiagnosticsRun, activeLightboxImage]);
+
   const handleOpenDiagnostics = async (runId) => {
     setSelectedDiagnosticsRun(runId);
     setLoadingDiagnostics(true);
@@ -307,7 +325,9 @@ export default function ProjectDetail() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white/5 rounded-xl p-4 border border-white/5 text-center">
                   <span className="text-xs font-bold text-gray-400 block uppercase tracking-wider mb-1">Completion</span>
-                  <span className="text-2xl font-black text-indigo-400">{reports[0].completion_percentage.toFixed(1)}%</span>
+                  <span className="text-2xl font-black text-indigo-400">
+                    {reports[0].completion_percentage < 0 ? 'N/A' : `${reports[0].completion_percentage.toFixed(1)}%`}
+                  </span>
                 </div>
                 <div className="bg-white/5 rounded-xl p-4 border border-white/5 text-center">
                   <span className="text-xs font-bold text-gray-400 block uppercase tracking-wider mb-1">Readiness</span>
@@ -410,7 +430,7 @@ export default function ProjectDetail() {
         </button>
       </div>
 
-      {activeTab === 'overview' ? (
+      {activeTab === 'overview' && (
         <>
           {/* Reports, Audit Runs & Evidence Tabs */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -444,7 +464,9 @@ export default function ProjectDetail() {
                       <div className="flex items-center gap-4">
                         <div className="text-right">
                           <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-wider">Completion</span>
-                          <span className="text-sm font-black text-white">{r.completion_percentage.toFixed(0)}%</span>
+                          <span className="text-sm font-black text-white">
+                            {r.completion_percentage < 0 ? 'N/A' : `${r.completion_percentage.toFixed(0)}%`}
+                          </span>
                         </div>
                         <div className="text-right">
                           <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-wider">Readiness</span>
@@ -542,7 +564,10 @@ export default function ProjectDetail() {
 
                     {e.screenshot_url ? (
                       <div className="space-y-2">
-                        <div className="aspect-video w-full rounded-lg overflow-hidden border border-white/5 bg-neutral-950">
+                        <div 
+                          className="aspect-video w-full rounded-lg overflow-hidden border border-white/5 bg-neutral-950 cursor-pointer"
+                          onClick={() => setActiveLightboxImage(e.screenshot_url)}
+                        >
                           <img 
                             src={e.screenshot_url} 
                             alt="Evidence Screenshot" 
@@ -550,14 +575,12 @@ export default function ProjectDetail() {
                             onError={(el) => { el.target.style.display = 'none'; }}
                           />
                         </div>
-                        <a 
-                          href={e.screenshot_url} 
-                          target="_blank" 
-                          rel="noreferrer"
+                        <button 
+                          onClick={() => setActiveLightboxImage(e.screenshot_url)}
                           className="w-full block py-2 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/10 text-indigo-400 font-extrabold text-[10px] uppercase rounded-lg tracking-wider text-center transition-all"
                         >
                           View Fullsize
-                        </a>
+                        </button>
                       </div>
                     ) : e.details ? (
                       <div className="bg-[#0c0c0e] p-2 border border-white/5 rounded-lg text-[10px] text-gray-500 max-h-24 overflow-y-auto font-mono whitespace-pre-wrap">
@@ -570,7 +593,9 @@ export default function ProjectDetail() {
             )}
           </div>
         </>
-      ) : (
+      )}
+
+      {activeTab === 'security' && (
         /* RBAC Security Tab Content */
         <div className="space-y-8 animate-shimmer-off">
           {(!rbacStatus || !rbacStatus.rbac_enabled) ? (
@@ -725,7 +750,10 @@ export default function ProjectDetail() {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {getRoleScreenshots().map((scr, idx) => (
                       <div key={idx} className="p-3 bg-white/5 border border-white/5 rounded-xl space-y-2 text-xs">
-                        <div className="aspect-video w-full rounded-lg overflow-hidden border border-white/5 bg-neutral-950">
+                        <div 
+                          className="aspect-video w-full rounded-lg overflow-hidden border border-white/5 bg-neutral-950 cursor-pointer"
+                          onClick={() => setActiveLightboxImage(scr.url)}
+                        >
                           <img
                             src={scr.url}
                             alt="Role Evidence"
@@ -736,14 +764,12 @@ export default function ProjectDetail() {
                         <div className="text-[10px] text-gray-400 font-mono truncate" title={scr.page}>
                           Path: {scr.page}
                         </div>
-                        <a
-                          href={scr.url}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          onClick={() => setActiveLightboxImage(scr.url)}
                           className="w-full block py-1.5 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/10 text-indigo-400 font-extrabold text-[9px] uppercase rounded-lg tracking-wider text-center transition-all"
                         >
                           View Screenshot
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -863,7 +889,10 @@ export default function ProjectDetail() {
 
       {/* Failure Diagnostics Modal */}
       {selectedDiagnosticsRun && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div 
+          onClick={(e) => { if (e.target === e.currentTarget) { setSelectedDiagnosticsRun(null); setDiagnosticsData(null); } }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+        >
           <div className="bg-[#0b0c10] border border-white/10 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
             {/* Header */}
             <div className="p-6 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-rose-950/20 to-neutral-900">
@@ -958,6 +987,28 @@ export default function ProjectDetail() {
                 Dismiss
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      {activeLightboxImage && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in"
+          onClick={() => setActiveLightboxImage(null)}
+        >
+          <div className="relative max-w-5xl w-full max-h-[90vh] flex flex-col items-center">
+            <button 
+              onClick={() => setActiveLightboxImage(null)}
+              className="absolute -top-10 right-0 text-white hover:text-indigo-400 text-3xl font-bold transition-all"
+            >
+              &times;
+            </button>
+            <img 
+              src={activeLightboxImage} 
+              alt="Evidence Fullsize" 
+              className="max-w-full max-h-[80vh] object-contain rounded-lg border border-white/10 shadow-2xl" 
+            />
           </div>
         </div>
       )}

@@ -20,6 +20,17 @@ export default function Settings() {
   const [revoking, setRevoking] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  
+  const [llmHealth, setLlmHealth] = useState(null);
+  const [checkingLlmHealth, setCheckingLlmHealth] = useState(false);
+  const [llmConfigForm, setLlmConfigForm] = useState({
+    default_provider: 'gemini',
+    fallback_provider: 'openai',
+    gemini_model: 'gemini-2.5-flash',
+    openai_model: 'gpt-4o',
+    failover_enabled: true
+  });
+  const [savingLlm, setSavingLlm] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -47,11 +58,33 @@ export default function Settings() {
     api.get('/api/v1/settings/status')
       .then(res => {
         setStatus(res.data);
+        if (res.data.llm_config) {
+          setLlmConfigForm({
+            default_provider: res.data.llm_config.default_provider || 'gemini',
+            fallback_provider: res.data.llm_config.fallback_provider || 'openai',
+            gemini_model: res.data.gemini?.model || 'gemini-2.5-flash',
+            openai_model: res.data.openai?.model || 'gpt-4o',
+            failover_enabled: res.data.llm_config.failover_enabled !== false
+          });
+        }
       })
       .catch(err => {
         console.error(err);
       })
       .finally(() => setLoadingStatus(false));
+  };
+
+  const fetchLlmHealth = () => {
+    setCheckingLlmHealth(true);
+    api.get('/api/v1/settings/llm/health')
+      .then(res => {
+        setLlmHealth(res.data.providers);
+      })
+      .catch(err => {
+        console.error(err);
+        setErrorMsg('Failed to fetch LLM Health');
+      })
+      .finally(() => setCheckingLlmHealth(false));
   };
 
   const handleProfileChange = (e) => {
@@ -96,6 +129,32 @@ export default function Settings() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleLlmConfigChange = (e) => {
+    const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+    setLlmConfigForm({
+      ...llmConfigForm,
+      [e.target.name]: value
+    });
+  };
+
+  const handleSaveLlmConfig = async (e) => {
+    e.preventDefault();
+    setSavingLlm(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+
+    try {
+      await api.put('/api/v1/settings/llm/config', llmConfigForm);
+      setSuccessMsg('LLM Configuration updated! Note: You may need to restart the backend to fully apply .env changes depending on deployment.');
+      fetchStatus();
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Failed to update LLM configuration.');
+    } finally {
+      setSavingLlm(false);
     }
   };
 
@@ -262,6 +321,96 @@ export default function Settings() {
               </button>
             </div>
           </div>
+
+          {/* LLM Routing and Models Configuration Form */}
+          <div className="glass-card p-6 rounded-2xl border border-white/5 space-y-6">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Database className="w-5 h-5 text-sky-400" />
+              LLM Provider Configuration
+            </h2>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Configure which LLM APIs to use by default, which models to target, and whether automatic failover is enabled when rate limits or outages occur.
+            </p>
+
+            <form onSubmit={handleSaveLlmConfig} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Default Provider</label>
+                  <select
+                    name="default_provider"
+                    value={llmConfigForm.default_provider}
+                    onChange={handleLlmConfigChange}
+                    className="w-full bg-[#0f0f13] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-sky-500 transition-all appearance-none"
+                  >
+                    <option value="gemini">Google Gemini</option>
+                    <option value="openai">OpenAI (GPT)</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Fallback Provider</label>
+                  <select
+                    name="fallback_provider"
+                    value={llmConfigForm.fallback_provider}
+                    onChange={handleLlmConfigChange}
+                    className="w-full bg-[#0f0f13] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-sky-500 transition-all appearance-none"
+                  >
+                    <option value="openai">OpenAI (GPT)</option>
+                    <option value="gemini">Google Gemini</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Gemini Target Model</label>
+                  <input
+                    type="text"
+                    name="gemini_model"
+                    value={llmConfigForm.gemini_model}
+                    onChange={handleLlmConfigChange}
+                    required
+                    className="w-full bg-[#0f0f13] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-sky-500 transition-all font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-wider">OpenAI Target Model</label>
+                  <input
+                    type="text"
+                    name="openai_model"
+                    value={llmConfigForm.openai_model}
+                    onChange={handleLlmConfigChange}
+                    required
+                    className="w-full bg-[#0f0f13] border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-sky-500 transition-all font-mono"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-3 p-3 bg-[#0a0a0d] border border-white/5 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
+                <input
+                  type="checkbox"
+                  name="failover_enabled"
+                  checked={llmConfigForm.failover_enabled}
+                  onChange={handleLlmConfigChange}
+                  className="w-4 h-4 rounded border-gray-600 bg-black text-sky-500 focus:ring-sky-500/20"
+                />
+                <div>
+                  <div className="text-xs font-bold text-white">Enable Automatic Failover</div>
+                  <div className="text-[10px] text-gray-500 leading-snug mt-0.5">If the Default Provider fails (e.g. rate limit), automatically retry with the Fallback Provider.</div>
+                </div>
+              </label>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={savingLlm}
+                  className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs uppercase tracking-widest px-6 py-3 rounded-xl transition-all disabled:opacity-50"
+                >
+                  {savingLlm && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Save LLM Config
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
 
         {/* Integration Status Diagnostics */}
@@ -304,6 +453,88 @@ export default function Settings() {
                   <div className="text-[11px] text-gray-400">
                     Model: <span className="text-indigo-400 font-mono">{status.gemini.model}</span>
                   </div>
+                </div>
+
+                {/* OpenAI Status */}
+                <div className="p-4 bg-[#0a0a0d] border border-white/5 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-emerald-400" />
+                      OpenAI API
+                    </span>
+                    {status.openai?.configured ? (
+                      <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-extrabold text-[9px] uppercase tracking-wider rounded-md">
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 font-extrabold text-[9px] uppercase tracking-wider rounded-md">
+                        Unconfigured
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-gray-400">
+                    Model: <span className="text-indigo-400 font-mono">{status.openai?.model || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* LLM Routing Config */}
+                <div className="p-4 bg-[#0a0a0d] border border-white/5 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-2">
+                      <Database className="w-4 h-4 text-sky-400" />
+                      LLM Routing
+                    </span>
+                    {status.llm_config?.failover_enabled ? (
+                      <span className="px-2 py-0.5 bg-sky-500/10 border border-sky-500/20 text-sky-400 font-extrabold text-[9px] uppercase tracking-wider rounded-md">
+                        Failover ON
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-gray-500/10 border border-gray-500/20 text-gray-400 font-extrabold text-[9px] uppercase tracking-wider rounded-md">
+                        Failover OFF
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-gray-400 flex flex-col gap-1">
+                    <span>Default: <span className="text-indigo-400 font-mono">{status.llm_config?.default_provider || 'N/A'}</span></span>
+                    <span>Fallback: <span className="text-rose-400 font-mono">{status.llm_config?.fallback_provider || 'N/A'}</span></span>
+                  </div>
+                </div>
+
+                {/* LLM Health Check */}
+                <div className="p-4 bg-[#0a0a0d] border border-white/5 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-indigo-400" />
+                      LLM Provider Health
+                    </span>
+                    <button
+                      onClick={fetchLlmHealth}
+                      disabled={checkingLlmHealth}
+                      className="px-3 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 font-bold text-[10px] uppercase tracking-wider rounded transition-all disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {checkingLlmHealth ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                      Check Health
+                    </button>
+                  </div>
+                  {llmHealth && (
+                    <div className="space-y-2 mt-3 pt-3 border-t border-white/5">
+                      {llmHealth.map(provider => (
+                        <div key={provider.provider} className="flex items-center justify-between bg-black/40 p-2 rounded-lg border border-white/5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-gray-300 capitalize">{provider.provider}</span>
+                            {provider.status === 'healthy' ? (
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span>
+                            ) : (
+                              <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"></span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-gray-400 font-mono">
+                            {provider.latency_ms !== null ? `${provider.latency_ms}ms` : 'Failed'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* GitHub Status */}

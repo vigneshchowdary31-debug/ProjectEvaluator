@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.models.sheet_connection import SheetConnection
 from app.models.audit_run import AuditRun
-from app.models.generated_report import GeneratedReport
+from app.models.project_report import ProjectReport
 from app.models.report import Report
 from app.services.google_sheets import GoogleSheetsService
 from app.config import get_settings
@@ -52,9 +52,9 @@ class SheetWritebackService:
             return
 
         # Fetch latest generated report
-        latest_report = self.db.query(GeneratedReport).filter(
-            GeneratedReport.project_id == project_id
-        ).order_by(GeneratedReport.created_at.desc()).first()
+        latest_report = self.db.query(ProjectReport).filter(
+            ProjectReport.project_id == project_id
+        ).order_by(ProjectReport.generated_at.desc()).first()
 
         status = latest_run.status.upper()
         completion = 0.0
@@ -63,28 +63,13 @@ class SheetWritebackService:
         risk_level = "Unknown"
         failure_reason = latest_run.result_summary if status == "FAILED" else ""
 
-        if status == "COMPLETED":
-            if latest_report:
-                completion = latest_report.completion_percentage
-                readiness = latest_report.student_report.get("production_readiness_score", 0.0)
-
-            # Security score calculation
-            reports = self.db.query(Report).filter(Report.audit_run_id == latest_run.id).all()
-            for r in reports:
-                sev = r.severity.lower()
-                if sev == "critical":
-                    security -= 25.0
-                elif sev == "high":
-                    security -= 15.0
-                elif sev == "medium":
-                    security -= 10.0
-                elif sev == "low":
-                    security -= 5.0
-            security = max(0.0, security)
+        if status == "COMPLETED" and latest_report:
+            completion = latest_report.completion_score
+            readiness = latest_report.report_data.get("production_readiness_score", 0.0)
+            security = latest_report.security_score
 
             # Health score
-            health_score = (completion * 0.5) + (readiness * 0.5) - (len(reports) * 5)
-            health_score = max(0.0, min(100.0, health_score))
+            health_score = latest_report.overall_score
             if health_score >= 80:
                 risk_level = "Low"
             elif health_score >= 50:
@@ -92,9 +77,22 @@ class SheetWritebackService:
             else:
                 risk_level = "High"
 
-        # URLs in the dashboard
-        student_url = f"http://localhost:3001/#/projects/{project_id}"
-        company_url = f"http://localhost:3001/#/projects/{project_id}"
+        # Ensure we never write localhost URLs to Google Sheets
+        report_url = "UPLOAD_FAILED"
+        pdf_url = "UPLOAD_FAILED"
+        json_url = "UPLOAD_FAILED"
+
+        if latest_report:
+            if getattr(latest_report, "report_url", None):
+                report_url = latest_report.report_url
+            if getattr(latest_report, "pdf_url", None):
+                pdf_url = latest_report.pdf_url
+            if getattr(latest_report, "json_url", None):
+                json_url = latest_report.json_url
+        else:
+            report_url = "NO_REPORT"
+            pdf_url = "NO_REPORT"
+            json_url = "NO_REPORT"
 
         update_dict = {
             "Audit Status": status,
@@ -104,8 +102,9 @@ class SheetWritebackService:
             "Last Audit Date": (latest_run.completed_at or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M:%S"),
             "Audit Run ID": latest_run.id,
             "Risk Level": risk_level,
-            "Student Report URL": student_url,
-            "Company Report URL": company_url,
+            "Project Report URL": report_url,
+            "PDF Report URL": pdf_url,
+            "JSON Report URL": json_url,
             "Failure Reason": failure_reason or ""
         }
 

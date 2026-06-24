@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
+    # ── OpenAI AI ─────────────────────────────────────────────────────
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o"
+
+    # ── LLM Settings ──────────────────────────────────────────────────
+    DEFAULT_LLM_PROVIDER: str = "gemini"
+    FALLBACK_LLM_PROVIDER: str = "openai"
+    LLM_FAILOVER_ENABLED: bool = True
+
     # ── GitHub ────────────────────────────────────────────────────────
     GITHUB_TOKEN: str = ""
     GITHUB_CACHE_TTL_HOURS: int = 24
@@ -46,7 +55,9 @@ class Settings(BaseSettings):
     # ── Sheets & Audit Queue Automation ──────────────────────────────
     AUDIT_WORKER_CONCURRENCY: int = 5
     AUDIT_WORKER_ENABLED: bool = True
-    SHEET_WRITEBACK_ENABLED: bool = True
+    # ── Supabase ──────────────────────────────────────────────────────
+    SUPABASE_URL: str = ""
+    SUPABASE_KEY: str = ""
 
     model_config = {
         "env_file": ".env",

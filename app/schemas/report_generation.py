@@ -2,7 +2,7 @@
 Pydantic schemas for the Report Generation Service.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 from app.schemas.prd import PRDAnalysisResult
@@ -34,102 +34,177 @@ class ReportGenerationRequest(BaseModel):
         description="Structured results from the Requirement Matching comparison"
     )
 
+# ── Feature Matrix ──────────────────────────────────────────────────────────
+class FeatureStatus(BaseModel):
+    feature: str
+    expected: bool
+    implemented: str  # e.g., "Implemented", "Partial", "Missing", "Broken"
+    status: str
+    evidence: str
 
-class StudentReportSchema(BaseModel):
-    """Educational audit report tailored for student developers."""
-    completion_percentage: float = Field(
-        ...,
-        description="Percentage of requirements successfully implemented (0.0 to 100.0)"
-    )
-    production_readiness_score: float = Field(
-        0.0,
-        description="Production readiness percentage rating (0.0 to 100.0)"
-    )
-    production_readiness_classification: str = Field(
-        "Prototype",
-        description="Maturity classification (Prototype -> Enterprise Ready)"
-    )
-    features_implemented: List[str] = Field(
-        default_factory=list,
-        description="List of fully or partially implemented features with educational verification notes"
-    )
-    missing_features: List[str] = Field(
-        default_factory=list,
-        description="List of missing features with guidance on how they should have been designed"
-    )
-    security_findings: List[str] = Field(
-        default_factory=list,
-        description="Detailed security findings explaining the vulnerabilities, code risks, and how to fix them"
-    )
-    ui_findings: List[str] = Field(
-        default_factory=list,
-        description="Detailed UI/UX evaluation matching expected pages, touch interactions, or routing errors"
-    )
-    code_quality_findings: List[str] = Field(
-        default_factory=list,
-        description="Detailed review of coding styles, modularity, layering, and database queries"
-    )
-    recommendations: List[str] = Field(
-        default_factory=list,
-        description="Step-by-step learning recommendations to improve the project codebase"
-    )
-    educational_notes: str = Field(
-        ...,
-        description="Comprehensive tutoring notes on best practices, architecture theory, and software engineering principles"
-    )
+class CoreSection(BaseModel):
+    features: List[FeatureStatus]
+    coverage_percentage: float
+    implemented_count: int
+    partial_count: int
+    missing_count: int
+    broken_count: int
 
+# ── Bug Findings ────────────────────────────────────────────────────────────
+class BugFinding(BaseModel):
+    severity: str  # Critical, High, Medium, Low
+    title: str
+    description: str
+    page: str
+    steps_to_reproduce: str
+    expected_behaviour: str
+    actual_behaviour: str
+    evidence_screenshot: Optional[str] = None
 
-class CompanyReportSchema(BaseModel):
-    """Commercial-grade audit report tailored for corporate stakeholders."""
-    completion_percentage: float = Field(
-        ...,
-        description="Percentage of requirements successfully implemented (0.0 to 100.0)"
-    )
-    production_readiness_score: float = Field(
-        0.0,
-        description="Production readiness percentage rating (0.0 to 100.0)"
-    )
-    production_readiness_classification: str = Field(
-        "Prototype",
-        description="Maturity classification (Prototype -> Enterprise Ready)"
-    )
-    features_implemented: List[str] = Field(
-        default_factory=list,
-        description="Summary of implemented business capabilities mapped to requirements"
-    )
-    missing_features: List[str] = Field(
-        default_factory=list,
-        description="Summary of missing business capabilities and product gaps"
-    )
-    security_findings: List[str] = Field(
-        default_factory=list,
-        description="High-level security risk profile, dependency alerts, and potential compliance liabilities"
-    )
-    ui_findings: List[str] = Field(
-        default_factory=list,
-        description="UI/UX branding evaluation, usability scores, and screenshot validation outcomes"
-    )
-    code_quality_findings: List[str] = Field(
-        default_factory=list,
-        description="Maintainability ratings, dependency stability, and system complexity checks"
-    )
-    recommendations: List[str] = Field(
-        default_factory=list,
-        description="Strategic recommendations regarding readiness for release, refactoring investments, and technical debt"
-    )
-    executive_summary: str = Field(
-        ...,
-        description="Executive summary profiling project health, risk level, and go-live capability assessment"
-    )
+# ── Security & Performance ──────────────────────────────────────────────────
+class SecurityFinding(BaseModel):
+    severity: str
+    description: str
+    recommendation: str
+
+class SecuritySection(BaseModel):
+    authentication_status: str
+    authorization_status: str
+    jwt_validation: str
+    session_handling: str
+    secrets_exposure: str
+    environment_variables: str
+    dependency_vulnerabilities: str
+    owasp_findings: List[SecurityFinding]
+
+class PerformanceMetrics(BaseModel):
+    load_time_ms: float
+    first_contentful_paint_ms: float
+    largest_contentful_paint_ms: float
+    total_requests: int
+    bundle_size_kb: float
+    performance_findings: List[str]
+
+# ── RBAC & Auth ─────────────────────────────────────────────────────────────
+class AuthAccessTest(BaseModel):
+    test_name: str  # e.g., "Login Success", "Dashboard Access"
+    status: str
+    evidence_screenshot: Optional[str] = None
+
+class RoleMatrix(BaseModel):
+    role: str
+    permissions: List[str]
+
+class PageAccessMatrix(BaseModel):
+    page: str
+    allowed_roles: List[str]
+
+class RBACSection(BaseModel):
+    access_tests: List[AuthAccessTest]
+    role_matrix: List[RoleMatrix]
+    page_access_matrix: List[PageAccessMatrix]
+    unauthorized_access_tests: List[str]
+    authorization_score: float
+    rbac_score: float
+
+# ── Evidence Gallery ────────────────────────────────────────────────────────
+class ScreenshotEvidence(BaseModel):
+    category: str  # Desktop, Tablet, Mobile, Homepage, Dashboard, etc.
+    page: str
+    action: str
+    result: str
+    timestamp: str
+    screenshot_url: str
+
+class EvidenceSection(BaseModel):
+    screenshots: List[ScreenshotEvidence]
+
+# ── Recommendations ─────────────────────────────────────────────────────────
+class Recommendation(BaseModel):
+    priority: str  # Critical, High, Medium, Low
+    problem: str
+    impact: str
+    recommended_fix: str
+    estimated_effort: str
+
+# ── Root Project Audit Report Schema ────────────────────────────────────────
+class ProjectAuditReportSchema(BaseModel):
+    """The unified, single source of truth report for a project."""
+    
+    # 1. Executive Summary
+    project_name: str
+    student_name: str
+    company_name: str
+    audit_date: str
+    audit_version: str
+    audit_duration_seconds: int
+    
+    overall_score: float
+    status: str  # Production Ready, Ready With Minor Fixes, Needs Major Improvements, Incomplete, Failed
+    
+    requirement_completion_score: float
+    security_score: float
+    performance_score: float
+    uiux_score: float
+    code_quality_score: float
+    
+    project_description: str
+    technology_stack: Dict[str, str]  # Frontend, Backend, Database, Hosting, Authentication, RBAC
+    
+    # 2. Repository Information & Deployment
+    deploy_url_reachable: bool
+    http_status_code: int
+    ssl_certificate_valid: bool
+    page_load_time_ms: float
+    mobile_responsive: bool
+    accessibility_score: float
+    deployment_status: str  # "Deployment Working" or "Deployment Broken"
+    
+    repository_reachable: bool
+    default_branch: str
+    last_commit_hash: str
+    last_commit_date: str
+    contributors_count: int
+    readme_exists: bool
+    license_exists: bool
+    package_files_found: bool
+    tech_stack_detected: str
+    repository_structure_score: float
+
+    # 3. Core Section
+    core_section: CoreSection
+    
+    # 4. Bug Findings
+    bugs: List[BugFinding]
+    
+    # 5. Security & Performance
+    security: SecuritySection
+    performance: PerformanceMetrics
+    
+    # 6. RBAC
+    rbac: Optional[RBACSection] = None
+    
+    # 7. Evidence
+    evidence: EvidenceSection
+    
+    # 8. Recommendations
+    recommendations: List[Recommendation]
+    
+    # 9. Final Verdict
+    remaining_work_percentage: float
+    estimated_missing_features: int
+    critical_issues_count: int
+    score_explanation: str
 
 
 class ReportGenerationResponse(BaseModel):
-    """Detailed response returned after saving reports to SQLite."""
-    id: str = Field(..., description="Unique ID of the generated report record")
+    """Detailed response returned after saving reports to database."""
+    id: str = Field(..., description="Unique ID of the generated project report record")
     project_id: str = Field(..., description="Project ID linked to the report")
-    completion_percentage: float = Field(..., description="Calculated project completion percentage")
-    student_report: StudentReportSchema
-    company_report: CompanyReportSchema
+    report: ProjectAuditReportSchema
+    report_url: Optional[str] = Field(None, description="Public Web Report URL (Supabase Storage)")
+    pdf_url: Optional[str] = Field(None, description="PDF Report URL (Supabase Storage)")
+    json_url: Optional[str] = Field(None, description="JSON Report URL (Supabase Storage)")
     created_at: str = Field(..., description="ISO 8601 creation timestamp")
 
     model_config = {"from_attributes": True}

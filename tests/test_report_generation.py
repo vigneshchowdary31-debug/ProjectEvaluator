@@ -122,6 +122,8 @@ def test_get_project_reports_endpoint(mock_get_by_proj_id, mock_get_proj):
         "executive_summary": "Stable."
     }
     mock_record.created_at = datetime.now(timezone.utc)
+    mock_record.student_report_url = None
+    mock_record.company_report_url = None
     
     mock_get_by_proj_id.return_value = [mock_record]
 
@@ -134,3 +136,83 @@ def test_get_project_reports_endpoint(mock_get_by_proj_id, mock_get_proj):
     assert json_data[0]["student_report"]["educational_notes"] == "Learn more."
     mock_get_proj.assert_called_once_with("project-uuid")
     mock_get_by_proj_id.assert_called_once_with("project-uuid")
+
+@patch("app.repositories.project.ProjectRepository.get_by_id")
+@patch("app.repositories.generated_report.GeneratedReportRepository.create")
+@patch("app.services.gemini.GeminiService.generate_project_reports")
+def test_report_generation_sentinel_score(mock_generate_reports, mock_create_report, mock_get_proj):
+    # 1. Setup mock project
+    mock_project = MagicMock()
+    mock_project.id = "project-uuid"
+    mock_project.owner_id = "test-user-uuid"
+    mock_get_proj.return_value = mock_project
+
+    # 2. Setup mock Gemini response
+    from app.schemas.report_generation import StudentReportSchema, CompanyReportSchema
+    mock_student = StudentReportSchema(
+        completion_percentage=-1.0,
+        features_implemented=[],
+        missing_features=[],
+        security_findings=[],
+        ui_findings=[],
+        code_quality_findings=[],
+        recommendations=[],
+        educational_notes="Notes"
+    )
+    mock_company = CompanyReportSchema(
+        completion_percentage=-1.0,
+        features_implemented=[],
+        missing_features=[],
+        security_findings=[],
+        ui_findings=[],
+        code_quality_findings=[],
+        recommendations=[],
+        executive_summary="Summary"
+    )
+    mock_gemini_wrapper = MagicMock()
+    mock_gemini_wrapper.student_report = mock_student
+    mock_gemini_wrapper.company_report = mock_company
+    mock_generate_reports.return_value = mock_gemini_wrapper
+
+    def set_created_at(report):
+        from datetime import datetime, timezone
+        report.created_at = datetime.now(timezone.utc)
+        report.id = "report-uuid"
+    mock_create_report.side_effect = set_created_at
+
+    # 3. Setup payload with 0 features to trigger sentinel logic
+    payload = {
+        "project_id": "project-uuid",
+        "prd_analysis": {"pages": [], "features": [], "forms": [], "user_flows": []},
+        "github_analysis": {
+            "technologies": [], "frameworks": [], "pages": [], "components": [], "folder_structure": {}, "security_issues": [],
+            "architecture_quality": {"rating": "good", "strengths": [], "weaknesses": [], "recommendations": []}
+        },
+        "browser_analysis": None,
+        "requirement_analysis": {
+            "implemented_features": [],
+            "partially_implemented_features": [],
+            "missing_features": [],
+            "confidence_score": 1.0,
+            "summary": "OK"
+        }
+    }
+    
+    from app.services.report_generation import ReportGenerationService
+    from app.schemas.report_generation import ReportGenerationRequest
+    
+    db = MagicMock()
+    service = ReportGenerationService(db)
+    user = DummyUser()
+    
+    request = ReportGenerationRequest(**payload)
+    response = service.generate(request, user)
+    
+    # 4. Verify completion percentage is set to -1.0
+    assert response.completion_percentage == -1.0
+    
+    # Check that report_repo.create was called with -1.0 completion percentage
+    mock_create_report.assert_called_once()
+    saved_report = mock_create_report.call_args[0][0]
+    assert saved_report.completion_percentage == -1.0
+

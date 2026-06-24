@@ -147,18 +147,12 @@ class AuditWorker:
                 # Refresh session and fetch updated audit run status
                 db.refresh(queue_item)
                 db_run = db.query(AuditRun).filter(AuditRun.id == audit_run.id).first()
+                if db_run:
+                    db.refresh(db_run)
                 
                 if db_run and db_run.status == "completed":
                     queue_service.mark_completed(queue_item_id, audit_run.id)
                     
-                    # 1. Trigger writeback to sheet row
-                    try:
-                        from app.services.sheet_writeback import SheetWritebackService
-                        writeback_service = SheetWritebackService(db)
-                        writeback_service.writeback(project_id)
-                    except Exception as wb_err:
-                        logger.error("Sheet writeback failed for project %s: %s", project_id, str(wb_err))
-
                     # 2. Trigger company portfolio recalculation
                     if project.company_name:
                         try:
@@ -168,8 +162,14 @@ class AuditWorker:
                         except Exception as port_err:
                             logger.error("Company portfolio aggregation failed for %s: %s", project.company_name, str(port_err))
                 else:
-                    reason = db_run.result_summary if db_run else "Audit run did not complete successfully."
-                    queue_service.mark_failed(queue_item_id, reason or "Failed during run task execution.")
+                    logger.info("Audit run %s status is %s. Reason: %s", db_run.id if db_run else None, db_run.status if db_run else None, getattr(db_run, 'failure_reason', 'None'))
+                    reason = db_run.failure_reason or db_run.result_summary if db_run else "Audit run did not complete successfully."
+                    queue_service.mark_failed(
+                        queue_item_id, 
+                        reason or "Failed during run task execution.",
+                        failed_stage=db_run.failed_stage if db_run else None,
+                        last_successful_step=db_run.last_successful_step if db_run else None
+                    )
                     
             except Exception as run_err:
                 queue_service.mark_failed(queue_item_id, f"Error running audit task workflow: {str(run_err)}")

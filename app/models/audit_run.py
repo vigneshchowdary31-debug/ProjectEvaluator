@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Set
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, JSON
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -58,6 +58,16 @@ class AuditRun(Base):
         DateTime(timezone=True), default=_utcnow
     )
 
+    
+    # ── LLM Traceability ──────────────────────────────────────────────
+    llm_provider_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    llm_model_used: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    llm_fallback_triggered: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    llm_prompt_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
+    llm_completion_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
+    llm_latency_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
+
+
     # ── Relationships ────────────────────────────────────────────────
     project: Mapped["Project"] = relationship("Project", back_populates="audit_runs")  # noqa: F821
     triggered_by_user: Mapped["User"] = relationship(  # noqa: F821
@@ -74,6 +84,9 @@ class AuditRun(Base):
     )
     evidences: Mapped[list["Evidence"]] = relationship(  # noqa: F821
         "Evidence", back_populates="audit_run", cascade="all, delete-orphan"
+    )
+    project_report: Mapped[Optional["ProjectReport"]] = relationship(  # noqa: F821
+        "ProjectReport", back_populates="audit_run", uselist=False
     )
 
     # ── Valid status transitions ─────────────────────────────────────

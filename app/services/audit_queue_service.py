@@ -79,12 +79,14 @@ class AuditQueueService:
             self.db.commit()
             logger.info("Completed queue task %s", queue_id)
 
-    def mark_failed(self, queue_id: str, reason: str) -> None:
+    def mark_failed(self, queue_id: str, reason: str, failed_stage: Optional[str] = None, last_successful_step: Optional[str] = None) -> None:
         """Mark queue task as failed and log the reason."""
         item = self.db.query(AuditQueue).filter(AuditQueue.id == queue_id).first()
         if item:
             item.status = "failed"
             item.failure_reason = reason
+            item.failed_stage = failed_stage
+            item.last_successful_step = last_successful_step
             item.completed_at = datetime.now(timezone.utc)
             self.db.commit()
             logger.info("Failed queue task %s: %s", queue_id, reason)

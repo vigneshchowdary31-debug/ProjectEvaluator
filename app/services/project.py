@@ -39,6 +39,12 @@ class ProjectService:
         )
 
     def create_project(self, data: ProjectCreate, owner_id: str) -> Project:
+        # Fetch owner details to populate student_name and company_name
+        from app.models.user import User
+        owner = self.project_repo.db.query(User).filter(User.id == owner_id).first()
+        student_name = owner.full_name if owner else None
+        company_name = owner.company_name if owner else None
+
         project = Project(
             name=data.name,
             description=data.description,
@@ -51,6 +57,8 @@ class ProjectService:
             auth_required=data.auth_required or False,
             login_url=data.login_url,
             owner_id=owner_id,
+            student_name=student_name,
+            company_name=company_name,
         )
         return self.project_repo.create(project)
 

@@ -11,7 +11,7 @@ from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.models.project import Project
 from app.models.audit_run import AuditRun
-from app.models.generated_report import GeneratedReport
+from app.models.project_report import ProjectReport
 from app.models.report import Report
 from app.repositories.user import UserRepository
 
@@ -29,7 +29,7 @@ def get_analytics_summary(
     total_runs = db.query(func.count(AuditRun.id)).scalar() or 0
     
     # Calculate average completion
-    avg_completion = db.query(func.avg(GeneratedReport.completion_percentage)).scalar() or 0.0
+    avg_completion = db.query(func.avg(ProjectReport.completion_score)).filter(ProjectReport.completion_score >= 0.0).scalar() or 0.0
     
     # Count security reports by severity
     vuln_counts = {
@@ -44,14 +44,14 @@ def get_analytics_summary(
     projects = db.query(Project).all()
     for p in projects:
         # Get latest generated report
-        latest_report = db.query(GeneratedReport).filter(
-            GeneratedReport.project_id == p.id
-        ).order_by(GeneratedReport.created_at.desc()).first()
+        latest_report = db.query(ProjectReport).filter(
+            ProjectReport.project_id == p.id
+        ).order_by(ProjectReport.generated_at.desc()).first()
         
         projects_list.append({
             "id": p.id,
             "name": p.name,
-            "completion_percentage": latest_report.completion_percentage if latest_report else 0.0,
+            "completion_percentage": latest_report.completion_score if latest_report else 0.0,
             "created_at": p.created_at.isoformat()
         })
 
@@ -89,16 +89,16 @@ def get_student_rankings(
         has_reports = False
         
         for p in user_projects:
-            latest_report = db.query(GeneratedReport).filter(
-                GeneratedReport.project_id == p.id
-            ).order_by(GeneratedReport.created_at.desc()).first()
+            latest_report = db.query(ProjectReport).filter(
+                ProjectReport.project_id == p.id
+            ).order_by(ProjectReport.generated_at.desc()).first()
             
             if latest_report:
                 has_reports = True
-                total_completion += latest_report.completion_percentage
-                # Extract readiness score from student report JSON
-                std_rep = latest_report.student_report
-                total_readiness += std_rep.get("production_readiness_score", 50.0)
+                total_completion += max(0.0, latest_report.completion_score)
+                # Extract readiness score from project report JSON data
+                rep_data = latest_report.report_data
+                total_readiness += rep_data.get("production_readiness_score", 50.0) if isinstance(rep_data, dict) else 50.0
                 
             # Count findings
             bugs_count = db.query(func.count(Report.id)).filter(
@@ -155,16 +155,16 @@ def get_company_dashboard(
         project_healths = []
         
         for p in company_projects:
-            latest_report = db.query(GeneratedReport).filter(
-                GeneratedReport.project_id == p.id
-            ).order_by(GeneratedReport.created_at.desc()).first()
+            latest_report = db.query(ProjectReport).filter(
+                ProjectReport.project_id == p.id
+            ).order_by(ProjectReport.generated_at.desc()).first()
             
             completion = 0.0
             readiness = 50.0
             if latest_report:
-                completion = latest_report.completion_percentage
-                std_rep = latest_report.student_report
-                readiness = std_rep.get("production_readiness_score", 50.0)
+                completion = max(0.0, latest_report.completion_score)
+                rep_data = latest_report.report_data
+                readiness = rep_data.get("production_readiness_score", 50.0) if isinstance(rep_data, dict) else 50.0
                 
             total_completion += completion
             total_readiness += readiness

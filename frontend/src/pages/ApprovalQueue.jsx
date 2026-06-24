@@ -24,6 +24,19 @@ export default function ApprovalQueue() {
     fetchApprovals();
   }, []);
 
+  // Handle Escape key to close rejection modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setRejectingProject(null);
+      }
+    };
+    if (rejectingProject) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [rejectingProject]);
+
   const fetchApprovals = async () => {
     setLoading(true);
     try {
@@ -250,7 +263,10 @@ export default function ApprovalQueue() {
 
       {/* Rejection Modal */}
       {rejectingProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div 
+          onClick={(e) => { if (e.target === e.currentTarget) setRejectingProject(null); }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+        >
           <div className="bg-[#0f0f13] border border-white/10 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-bold text-white">Reject Project: {rejectingProject.project?.name}</h3>

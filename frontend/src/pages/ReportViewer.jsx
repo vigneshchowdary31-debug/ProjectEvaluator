@@ -56,7 +56,10 @@ export default function ReportViewer() {
   
   let verdict = 'Needs Significant Improvements';
   let verdictColor = 'text-amber-400 bg-amber-500/10 border-amber-500/20';
-  if (completion >= 90 && readiness >= 90) {
+  if (completion < 0) {
+    verdict = 'N/A (No PRD Provided)';
+    verdictColor = 'text-gray-400 bg-white/5 border-white/10';
+  } else if (completion >= 90 && readiness >= 90) {
     verdict = 'Production Ready';
     verdictColor = 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
   } else if (completion >= 70 && readiness >= 70) {
@@ -151,7 +154,7 @@ export default function ReportViewer() {
         <div className="glass-card rounded-2xl p-6 border border-white/5 flex items-center justify-between gap-4">
           <div className="space-y-1">
             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Implementation Score</span>
-            <span className="text-3xl font-black text-white">{completion.toFixed(1)}%</span>
+            <span className="text-3xl font-black text-white">{completion < 0 ? 'N/A' : `${completion.toFixed(1)}%`}</span>
             <span className="text-xs text-emerald-400 font-semibold block">PRD Coverage</span>
           </div>
           <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl">
